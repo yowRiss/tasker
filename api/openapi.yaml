@@ -1,0 +1,65 @@
+openapi: 3.1.1
+info:
+  title: Personal Tasks + Notes API
+  version: 1.0.0
+  description: |
+    Authenticated personal tasks and notes API. All /v1 endpoints require a Bearer JWT.
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Check API liveness
+      responses:
+        "200":
+          description: API is running
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+  /v1/me:
+    get: { operationId: getMe, responses: { "200": { description: Authenticated principal } } }
+  /v1/tasks:
+    get: { operationId: listTasks, responses: { "200": { description: Task page } } }
+    post: { operationId: createTask, responses: { "201": { description: Created task } } }
+  /v1/tasks/{taskId}:
+    get: { operationId: getTask, responses: { "200": { description: Task } } }
+    patch: { operationId: updateTask, responses: { "200": { description: Updated task } } }
+    delete: { operationId: deleteTask, responses: { "204": { description: Deleted } } }
+  /v1/tasks/{taskId}/completion:
+    patch: { operationId: setTaskCompletion, responses: { "200": { description: Updated task } } }
+  /v1/projects:
+    get: { operationId: listProjects, responses: { "200": { description: Project page } } }
+    post: { operationId: createProject, responses: { "201": { description: Created project } } }
+  /v1/projects/{projectId}:
+    patch: { operationId: updateProject, responses: { "200": { description: Updated project } } }
+    delete: { operationId: deleteProject, responses: { "204": { description: Deleted } } }
+  /v1/tags:
+    get: { operationId: listTags, responses: { "200": { description: Tag page } } }
+    post: { operationId: createTag, responses: { "201": { description: Created tag } } }
+  /v1/tags/{tagId}:
+    patch: { operationId: updateTag, responses: { "200": { description: Updated tag } } }
+    delete: { operationId: deleteTag, responses: { "204": { description: Deleted } } }
+  /v1/notes:
+    get: { operationId: listNotes, responses: { "200": { description: Note page } } }
+    post: { operationId: createNote, responses: { "201": { description: Created note } } }
+  /v1/notes/{noteId}:
+    get: { operationId: getNote, responses: { "200": { description: Note } } }
+    patch: { operationId: updateNote, responses: { "200": { description: Updated note } } }
+    delete: { operationId: deleteNote, responses: { "204": { description: Deleted } } }
+  /v1/notes/{noteId}/tasks/{taskId}:
+    put: { operationId: linkNoteTask, responses: { "204": { description: Linked } } }
+    delete: { operationId: unlinkNoteTask, responses: { "204": { description: Unlinked } } }
+  /v1/notes/{noteId}/images:
+    post: { operationId: uploadNoteImage, responses: { "201": { description: Uploaded image } } }
+  /v1/note-images/{imageId}:
+    patch: { operationId: updateNoteImage, responses: { "200": { description: Updated image } } }
+    delete: { operationId: deleteNoteImage, responses: { "204": { description: Deleted } } }
+  /v1/note-images/{imageId}/access:
+    get: { operationId: getNoteImageAccess, responses: { "200": { description: Signed image URL } } }
+  /v1/search:
+    get: { operationId: search, responses: { "200": { description: Typed search results } } }
