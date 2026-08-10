@@ -1,12 +1,3 @@
--- Admin accounts for local authentication (replaces Supabase Auth for login).
-create table public.admins (
-  id uuid primary key default gen_random_uuid(),
-  username varchar(80) not null unique,
-  password_hash text not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create trigger admins_set_updated_at
-before update on public.admins
-for each row execute function public.set_updated_at();
+-- Kept as a no-op for migration-history compatibility.
+-- `public.admins` was moved into 20260809000100_create_app_schema.sql so a
+-- clean reset creates the local identity table before its foreign-key users.

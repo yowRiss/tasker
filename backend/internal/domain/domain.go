@@ -68,3 +68,106 @@ type Page[T any] struct {
 	Items      []T     `json:"items"`
 	NextCursor *string `json:"next_cursor,omitempty"`
 }
+
+// Money amounts deliberately remain strings at the API boundary. PostgreSQL
+// numeric preserves their exact value and the service rejects floating point
+// notation before a value reaches the database.
+type Account struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	AccountType string     `json:"account_type"`
+	Currency    string     `json:"currency"`
+	ArchivedAt  *time.Time `json:"archived_at,omitempty"`
+	Balance     string     `json:"balance"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type Category struct {
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	CategoryType string     `json:"category_type"`
+	Icon         *string    `json:"icon,omitempty"`
+	Color        *string    `json:"color,omitempty"`
+	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+type Receipt struct {
+	ID               string    `json:"id"`
+	TransactionID    string    `json:"transaction_id"`
+	ObjectPath       string    `json:"-"`
+	OriginalFilename string    `json:"original_filename"`
+	MIMEType         string    `json:"mime_type"`
+	ByteSize         int       `json:"byte_size"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+type Transaction struct {
+	ID                string    `json:"id"`
+	TransactionType   string    `json:"transaction_type"`
+	Amount            string    `json:"amount"`
+	TransactionDate   string    `json:"transaction_date"`
+	AccountID         string    `json:"account_id"`
+	AccountName       string    `json:"account_name"`
+	TransferAccountID *string   `json:"transfer_account_id,omitempty"`
+	TransferAccountName *string `json:"transfer_account_name,omitempty"`
+	CategoryID        *string   `json:"category_id,omitempty"`
+	CategoryName      *string   `json:"category_name,omitempty"`
+	Description       *string   `json:"description,omitempty"`
+	Receipt           *Receipt  `json:"receipt,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+type Budget struct {
+	ID          string    `json:"id"`
+	CategoryID  string    `json:"category_id"`
+	CategoryName string   `json:"category_name"`
+	PeriodStart string    `json:"period_start"`
+	PeriodEnd   string    `json:"period_end"`
+	AmountLimit string    `json:"amount_limit"`
+	Spent       string    `json:"spent"`
+	Remaining   string    `json:"remaining"`
+	PercentUsed string    `json:"percent_used"`
+	IsOverBudget bool     `json:"is_over_budget"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type RecurringTransaction struct {
+	ID              string     `json:"id"`
+	TransactionType string     `json:"transaction_type"`
+	Amount          string     `json:"amount"`
+	AccountID       string     `json:"account_id"`
+	CategoryID      string     `json:"category_id"`
+	Description     *string    `json:"description,omitempty"`
+	Cadence         string     `json:"cadence"`
+	NextDueDate     string     `json:"next_due_date"`
+	EndsOn          *string    `json:"ends_on,omitempty"`
+	IsActive        bool       `json:"is_active"`
+	LastProcessedOn *string    `json:"last_processed_on,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+type CategorySpend struct {
+	CategoryID   string `json:"category_id"`
+	CategoryName string `json:"category_name"`
+	Amount       string `json:"amount"`
+}
+
+type MoneyTrendPoint struct {
+	Period  string `json:"period"`
+	Income  string `json:"income"`
+	Expense string `json:"expense"`
+}
+
+type MoneyDashboard struct {
+	TotalBalance string            `json:"total_balance"`
+	Income       string            `json:"income"`
+	Expense      string            `json:"expense"`
+	CategorySpend []CategorySpend  `json:"category_spend"`
+	Trend        []MoneyTrendPoint `json:"trend"`
+}

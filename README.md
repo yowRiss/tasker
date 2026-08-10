@@ -1,10 +1,10 @@
-# Personal Tasks + Notes
+# Personal Tasks + Notes + Money
 
-A personal productivity workspace for tasks and Markdown notes with private image embeds. Product scope and engineering decisions are documented in [PRD.md](PRD.md) and [AGENT.md](AGENT.md).
+A personal productivity workspace for tasks, Markdown notes with private image embeds, and money management. Product scope and engineering decisions are documented in [PRD.md](PRD.md) and [AGENT.md](AGENT.md).
 
 ## Repository layout
 
-- `frontend/` — Vue 3 + Vite application. It communicates only with the Go API, except for Supabase Auth session handling.
+- `frontend/` — Vue 3 + Vite application. It communicates only with the Go API and stores the local-admin JWT session.
 - `backend/` — Go + chi API. It owns Supabase Postgres and Storage access.
 - `api/` — OpenAPI contract shared by the frontend and backend.
 - `supabase/` — database, RLS, and Storage migrations.
@@ -13,7 +13,7 @@ A personal productivity workspace for tasks and Markdown notes with private imag
 
 - Node.js 22+ and npm 10+
 - Go version specified by [`backend/go.mod`](backend/go.mod) (currently 1.26.4)
-- A Supabase project when configuring real Auth, database, and Storage access
+- A Supabase project for Postgres and private Storage access
 
 ## Local setup
 

@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"tasker/backend/internal/domain"
+	"time"
 )
 
 type Repository struct{}
@@ -317,4 +318,376 @@ func (r *Repository) UpdateAdminPassword(ctx context.Context, pool *pgxpool.Pool
 	return nil
 }
 
+const accountFields = `a.id,a.name,a.account_type,a.currency,a.archived_at,
+  coalesce(b.balance, 0)::text,a.created_at,a.updated_at`
 
+func scanAccount(row pgx.Row) (domain.Account, error) {
+	var x domain.Account
+	err := row.Scan(&x.ID, &x.Name, &x.AccountType, &x.Currency, &x.ArchivedAt, &x.Balance, &x.CreatedAt, &x.UpdatedAt)
+	return x, err
+}
+
+// accountBalanceJoin represents every transaction as one or two account legs.
+// This keeps stored balances immutable and makes transfers balance-neutral.
+const accountBalanceJoin = `
+left join (
+  select account_id, sum(delta) as balance from (
+    select account_id, case transaction_type when 'income' then amount else -amount end as delta
+    from transactions where user_id=$1
+    union all
+    select transfer_account_id, amount from transactions
+    where user_id=$1 and transaction_type='transfer'
+  ) legs group by account_id
+) b on b.account_id=a.id`
+
+func (r *Repository) Accounts(ctx context.Context, tx pgx.Tx, userID string, includeArchived bool) ([]domain.Account, error) {
+	query := "select " + accountFields + " from accounts a " + accountBalanceJoin + " where a.user_id=$1"
+	if !includeArchived {
+		query += " and a.archived_at is null"
+	}
+	query += " order by a.archived_at nulls first, lower(a.name)"
+	rows, err := tx.Query(ctx, query, userID)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	out := []domain.Account{}
+	for rows.Next() { x, err := scanAccount(rows); if err != nil { return nil, err }; out = append(out, x) }
+	return out, rows.Err()
+}
+
+func (r *Repository) Account(ctx context.Context, tx pgx.Tx, userID, id string) (domain.Account, error) {
+	return scanAccount(tx.QueryRow(ctx, "select "+accountFields+" from accounts a "+accountBalanceJoin+" where a.user_id=$1 and a.id=$2", userID, id))
+}
+
+func (r *Repository) CreateAccount(ctx context.Context, tx pgx.Tx, userID, name, kind string) (domain.Account, error) {
+	return scanAccount(tx.QueryRow(ctx, "insert into accounts(user_id,name,account_type) values($1,$2,$3) returning id,name,account_type,currency,archived_at,'0'::text,created_at,updated_at", userID, name, kind))
+}
+
+func (r *Repository) UpdateAccount(ctx context.Context, tx pgx.Tx, userID, id string, name, kind *string, archived *bool) (domain.Account, error) {
+	if archived != nil {
+		_, err := tx.Exec(ctx, "update accounts set archived_at=case when $4 then coalesce(archived_at, now()) else null end where id=$1 and user_id=$2", id, userID, *archived)
+		if err != nil { return domain.Account{}, err }
+	}
+	if name != nil || kind != nil {
+		_, err := tx.Exec(ctx, "update accounts set name=coalesce($3,name), account_type=coalesce($4,account_type) where id=$1 and user_id=$2", id, userID, name, kind)
+		if err != nil { return domain.Account{}, err }
+	}
+	return r.Account(ctx, tx, userID, id)
+}
+
+func (r *Repository) DeleteAccount(ctx context.Context, tx pgx.Tx, userID, id string) error {
+	tag, err := tx.Exec(ctx, "delete from accounts where id=$1 and user_id=$2", id, userID)
+	if err != nil { return err }
+	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	return nil
+}
+
+func scanCategory(row pgx.Row) (domain.Category, error) {
+	var x domain.Category
+	err := row.Scan(&x.ID, &x.Name, &x.CategoryType, &x.Icon, &x.Color, &x.ArchivedAt, &x.CreatedAt, &x.UpdatedAt)
+	return x, err
+}
+
+func (r *Repository) Categories(ctx context.Context, tx pgx.Tx, userID, kind string, includeArchived bool) ([]domain.Category, error) {
+	args := []any{userID}
+	query := "select id,name,category_type,icon,color,archived_at,created_at,updated_at from categories where user_id=$1"
+	if kind != "" { args = append(args, kind); query += fmt.Sprintf(" and category_type=$%d", len(args)) }
+	if !includeArchived { query += " and archived_at is null" }
+	query += " order by category_type, lower(name)"
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	out := []domain.Category{}
+	for rows.Next() { x, err := scanCategory(rows); if err != nil { return nil, err }; out = append(out, x) }
+	return out, rows.Err()
+}
+
+func (r *Repository) Category(ctx context.Context, tx pgx.Tx, userID, id string) (domain.Category, error) {
+	return scanCategory(tx.QueryRow(ctx, "select id,name,category_type,icon,color,archived_at,created_at,updated_at from categories where user_id=$1 and id=$2", userID, id))
+}
+
+func (r *Repository) CreateCategory(ctx context.Context, tx pgx.Tx, userID, name, kind string, icon, color *string) (domain.Category, error) {
+	return scanCategory(tx.QueryRow(ctx, "insert into categories(user_id,name,category_type,icon,color) values($1,$2,$3,$4,$5) returning id,name,category_type,icon,color,archived_at,created_at,updated_at", userID, name, kind, icon, color))
+}
+
+func (r *Repository) UpdateCategory(ctx context.Context, tx pgx.Tx, userID, id string, name, icon, color *string, archived *bool) (domain.Category, error) {
+	if archived != nil {
+		_, err := tx.Exec(ctx, "update categories set archived_at=case when $4 then coalesce(archived_at, now()) else null end where id=$1 and user_id=$2", id, userID, *archived)
+		if err != nil { return domain.Category{}, err }
+	}
+	_, err := tx.Exec(ctx, "update categories set name=coalesce($3,name),icon=$4,color=$5 where id=$1 and user_id=$2", id, userID, name, icon, color)
+	if err != nil { return domain.Category{}, err }
+	return r.Category(ctx, tx, userID, id)
+}
+
+func (r *Repository) DeleteCategory(ctx context.Context, tx pgx.Tx, userID, id string) error {
+	tag, err := tx.Exec(ctx, "delete from categories where id=$1 and user_id=$2", id, userID)
+	if err != nil { return err }
+	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	return nil
+}
+
+func (r *Repository) CreateDefaultCategories(ctx context.Context, tx pgx.Tx, userID string) error {
+	_, err := tx.Exec(ctx, `insert into categories(user_id,name,category_type,icon,color) values
+($1,'Food','expense','utensils','#E67E22'),($1,'Transport','expense','car','#2980B9'),
+($1,'Bills','expense','receipt','#8E44AD'),($1,'Shopping','expense','bag','#16A085'),
+($1,'Health','expense','heart','#C0392B'),($1,'Salary','income','wallet','#27AE60')
+on conflict (user_id, category_type, lower(name)) do nothing`, userID)
+	return err
+}
+
+type TransactionFilter struct {
+	StartDate, EndDate, AccountID, CategoryID, TransactionType, Query, MinAmount, MaxAmount string
+	Limit int
+}
+
+const transactionFields = `t.id,t.transaction_type,t.amount::text,t.transaction_date::text,
+  t.account_id,a.name,t.transfer_account_id,ta.name,t.category_id,c.name,t.description,
+  r.id,r.transaction_id,r.object_path,r.original_filename,r.mime_type,r.byte_size,r.created_at,
+  t.created_at,t.updated_at`
+const transactionJoins = `
+ join accounts a on a.id=t.account_id and a.user_id=t.user_id
+ left join accounts ta on ta.id=t.transfer_account_id and ta.user_id=t.user_id
+ left join categories c on c.id=t.category_id and c.user_id=t.user_id
+ left join transaction_receipts r on r.transaction_id=t.id and r.user_id=t.user_id`
+
+func scanTransaction(row pgx.Row) (domain.Transaction, error) {
+	var x domain.Transaction
+	var receiptID, receiptTxn, receiptObject, receiptName, receiptMIME *string
+	var receiptSize *int
+	var receiptCreated *time.Time
+	err := row.Scan(&x.ID, &x.TransactionType, &x.Amount, &x.TransactionDate,
+		&x.AccountID, &x.AccountName, &x.TransferAccountID, &x.TransferAccountName,
+		&x.CategoryID, &x.CategoryName, &x.Description,
+		&receiptID, &receiptTxn, &receiptObject, &receiptName, &receiptMIME, &receiptSize, &receiptCreated,
+		&x.CreatedAt, &x.UpdatedAt)
+	if err != nil { return x, err }
+	if receiptID != nil {
+		x.Receipt = &domain.Receipt{ID: *receiptID, TransactionID: *receiptTxn, ObjectPath: *receiptObject, OriginalFilename: *receiptName, MIMEType: *receiptMIME, ByteSize: *receiptSize, CreatedAt: *receiptCreated}
+	}
+	return x, nil
+}
+
+func (r *Repository) Transaction(ctx context.Context, tx pgx.Tx, userID, id string) (domain.Transaction, error) {
+	return scanTransaction(tx.QueryRow(ctx, "select "+transactionFields+" from transactions t "+transactionJoins+" where t.user_id=$1 and t.id=$2", userID, id))
+}
+
+func (r *Repository) Transactions(ctx context.Context, tx pgx.Tx, userID string, f TransactionFilter) ([]domain.Transaction, error) {
+	args := []any{userID}
+	query := "select " + transactionFields + " from transactions t " + transactionJoins + " where t.user_id=$1"
+	add := func(fragment, value string) { if value != "" { args = append(args, value); query += fmt.Sprintf(" and "+fragment+" $%d", len(args)) } }
+	add("t.transaction_date >=", f.StartDate)
+	add("t.transaction_date <=", f.EndDate)
+	add("t.account_id =", f.AccountID)
+	add("t.category_id =", f.CategoryID)
+	add("t.transaction_type =", f.TransactionType)
+	if f.MinAmount != "" { args = append(args, f.MinAmount); query += fmt.Sprintf(" and t.amount >= $%d::numeric", len(args)) }
+	if f.MaxAmount != "" { args = append(args, f.MaxAmount); query += fmt.Sprintf(" and t.amount <= $%d::numeric", len(args)) }
+	if f.Query != "" { args = append(args, "%"+f.Query+"%"); query += fmt.Sprintf(" and coalesce(t.description,'') ilike $%d", len(args)) }
+	args = append(args, f.Limit)
+	query += fmt.Sprintf(" order by t.transaction_date desc,t.id desc limit $%d", len(args))
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	out := []domain.Transaction{}
+	for rows.Next() { x, err := scanTransaction(rows); if err != nil { return nil, err }; out = append(out, x) }
+	return out, rows.Err()
+}
+
+func (r *Repository) CreateTransaction(ctx context.Context, tx pgx.Tx, userID, kind, amount, date, accountID string, transferAccountID, categoryID, description *string) (domain.Transaction, error) {
+	var id string
+	err := tx.QueryRow(ctx, `insert into transactions(user_id,transaction_type,amount,transaction_date,account_id,transfer_account_id,category_id,description)
+values($1,$2,$3::numeric,$4::date,$5,$6,$7,$8) returning id`, userID, kind, amount, date, accountID, transferAccountID, categoryID, description).Scan(&id)
+	if err != nil { return domain.Transaction{}, err }
+	return r.Transaction(ctx, tx, userID, id)
+}
+
+func (r *Repository) UpdateTransaction(ctx context.Context, tx pgx.Tx, userID, id, kind, amount, date, accountID string, transferAccountID, categoryID, description *string) (domain.Transaction, error) {
+	tag, err := tx.Exec(ctx, `update transactions set transaction_type=$3,amount=$4::numeric,transaction_date=$5::date,account_id=$6,transfer_account_id=$7,category_id=$8,description=$9
+where id=$1 and user_id=$2`, id, userID, kind, amount, date, accountID, transferAccountID, categoryID, description)
+	if err != nil { return domain.Transaction{}, err }
+	if tag.RowsAffected() == 0 { return domain.Transaction{}, pgx.ErrNoRows }
+	return r.Transaction(ctx, tx, userID, id)
+}
+
+func (r *Repository) DeleteTransaction(ctx context.Context, tx pgx.Tx, userID, id string) error {
+	tag, err := tx.Exec(ctx, "delete from transactions where id=$1 and user_id=$2", id, userID)
+	if err != nil { return err }
+	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	return nil
+}
+
+func (r *Repository) ActiveAccount(ctx context.Context, tx pgx.Tx, userID, id string) error {
+	var ok bool
+	err := tx.QueryRow(ctx, "select exists(select 1 from accounts where id=$1 and user_id=$2 and archived_at is null)", id, userID).Scan(&ok)
+	if err != nil || !ok { return pgx.ErrNoRows }
+	return nil
+}
+
+func (r *Repository) ActiveCategory(ctx context.Context, tx pgx.Tx, userID, id, kind string) error {
+	var ok bool
+	err := tx.QueryRow(ctx, "select exists(select 1 from categories where id=$1 and user_id=$2 and category_type=$3 and archived_at is null)", id, userID, kind).Scan(&ok)
+	if err != nil || !ok { return pgx.ErrNoRows }
+	return nil
+}
+
+func (r *Repository) Receipt(ctx context.Context, tx pgx.Tx, userID, id string) (domain.Receipt, error) {
+	var x domain.Receipt
+	err := tx.QueryRow(ctx, "select id,transaction_id,object_path,original_filename,mime_type,byte_size,created_at from transaction_receipts where id=$1 and user_id=$2", id, userID).Scan(&x.ID, &x.TransactionID, &x.ObjectPath, &x.OriginalFilename, &x.MIMEType, &x.ByteSize, &x.CreatedAt)
+	return x, err
+}
+
+func (r *Repository) ReceiptForTransaction(ctx context.Context, tx pgx.Tx, userID, transactionID string) (domain.Receipt, error) {
+	var x domain.Receipt
+	err := tx.QueryRow(ctx, "select id,transaction_id,object_path,original_filename,mime_type,byte_size,created_at from transaction_receipts where transaction_id=$1 and user_id=$2 for update", transactionID, userID).Scan(&x.ID, &x.TransactionID, &x.ObjectPath, &x.OriginalFilename, &x.MIMEType, &x.ByteSize, &x.CreatedAt)
+	return x, err
+}
+
+func (r *Repository) UpsertReceipt(ctx context.Context, tx pgx.Tx, userID, transactionID, object, name, mime string, size int) (domain.Receipt, error) {
+	var x domain.Receipt
+	err := tx.QueryRow(ctx, `insert into transaction_receipts(user_id,transaction_id,object_path,original_filename,mime_type,byte_size)
+values($1,$2,$3,$4,$5,$6) on conflict(transaction_id) do update set object_path=excluded.object_path,original_filename=excluded.original_filename,mime_type=excluded.mime_type,byte_size=excluded.byte_size
+returning id,transaction_id,object_path,original_filename,mime_type,byte_size,created_at`, userID, transactionID, object, name, mime, size).Scan(&x.ID, &x.TransactionID, &x.ObjectPath, &x.OriginalFilename, &x.MIMEType, &x.ByteSize, &x.CreatedAt)
+	return x, err
+}
+
+func (r *Repository) DeleteReceipt(ctx context.Context, tx pgx.Tx, userID, id string) error {
+	tag, err := tx.Exec(ctx, "delete from transaction_receipts where id=$1 and user_id=$2", id, userID)
+	if err != nil { return err }
+	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	return nil
+}
+
+const budgetFields = `b.id,b.category_id,c.name,b.period_start::text,b.period_end::text,b.amount_limit::text,
+  coalesce(s.spent,0)::text,(b.amount_limit-coalesce(s.spent,0))::text,
+  round((coalesce(s.spent,0)/b.amount_limit)*100,2)::text,(coalesce(s.spent,0)>b.amount_limit),b.created_at,b.updated_at`
+const budgetJoin = ` join categories c on c.id=b.category_id and c.user_id=b.user_id
+ left join lateral (
+   select sum(t.amount) as spent from transactions t
+   where t.user_id=b.user_id and t.category_id=b.category_id and t.transaction_type='expense'
+     and t.transaction_date between b.period_start and b.period_end
+ ) s on true`
+
+func scanBudget(row pgx.Row) (domain.Budget, error) {
+	var x domain.Budget
+	err := row.Scan(&x.ID, &x.CategoryID, &x.CategoryName, &x.PeriodStart, &x.PeriodEnd, &x.AmountLimit, &x.Spent, &x.Remaining, &x.PercentUsed, &x.IsOverBudget, &x.CreatedAt, &x.UpdatedAt)
+	return x, err
+}
+
+func (r *Repository) Budgets(ctx context.Context, tx pgx.Tx, userID string) ([]domain.Budget, error) {
+	rows, err := tx.Query(ctx, "select "+budgetFields+" from budgets b "+budgetJoin+" where b.user_id=$1 order by b.period_start desc, lower(c.name)", userID)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	out := []domain.Budget{}
+	for rows.Next() { x, err := scanBudget(rows); if err != nil { return nil, err }; out = append(out, x) }
+	return out, rows.Err()
+}
+
+func (r *Repository) Budget(ctx context.Context, tx pgx.Tx, userID, id string) (domain.Budget, error) {
+	return scanBudget(tx.QueryRow(ctx, "select "+budgetFields+" from budgets b "+budgetJoin+" where b.user_id=$1 and b.id=$2", userID, id))
+}
+
+func (r *Repository) CreateBudget(ctx context.Context, tx pgx.Tx, userID, categoryID, start, end, amount string) (domain.Budget, error) {
+	var id string
+	err := tx.QueryRow(ctx, "insert into budgets(user_id,category_id,period_start,period_end,amount_limit) values($1,$2,$3::date,$4::date,$5::numeric) returning id", userID, categoryID, start, end, amount).Scan(&id)
+	if err != nil { return domain.Budget{}, err }
+	return r.Budget(ctx, tx, userID, id)
+}
+
+func (r *Repository) UpdateBudget(ctx context.Context, tx pgx.Tx, userID, id, categoryID, start, end, amount string) (domain.Budget, error) {
+	tag, err := tx.Exec(ctx, "update budgets set category_id=$3,period_start=$4::date,period_end=$5::date,amount_limit=$6::numeric where id=$1 and user_id=$2", id, userID, categoryID, start, end, amount)
+	if err != nil { return domain.Budget{}, err }
+	if tag.RowsAffected() == 0 { return domain.Budget{}, pgx.ErrNoRows }
+	return r.Budget(ctx, tx, userID, id)
+}
+
+func (r *Repository) DeleteBudget(ctx context.Context, tx pgx.Tx, userID, id string) error {
+	tag, err := tx.Exec(ctx, "delete from budgets where id=$1 and user_id=$2", id, userID)
+	if err != nil { return err }
+	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	return nil
+}
+
+func scanRecurring(row pgx.Row) (domain.RecurringTransaction, error) {
+	var x domain.RecurringTransaction
+	err := row.Scan(&x.ID, &x.TransactionType, &x.Amount, &x.AccountID, &x.CategoryID, &x.Description, &x.Cadence, &x.NextDueDate, &x.EndsOn, &x.IsActive, &x.LastProcessedOn, &x.CreatedAt, &x.UpdatedAt)
+	return x, err
+}
+const recurringFields = "id,transaction_type,amount::text,account_id,category_id,description,cadence,next_due_date::text,ends_on::text,is_active,last_processed_on::text,created_at,updated_at"
+
+func (r *Repository) Recurring(ctx context.Context, tx pgx.Tx, userID, id string, lock bool) (domain.RecurringTransaction, error) {
+	q := "select " + recurringFields + " from recurring_transactions where user_id=$1 and id=$2"
+	if lock { q += " for update" }
+	return scanRecurring(tx.QueryRow(ctx, q, userID, id))
+}
+
+func (r *Repository) RecurringTransactions(ctx context.Context, tx pgx.Tx, userID string, dueOnly bool) ([]domain.RecurringTransaction, error) {
+	q := "select " + recurringFields + " from recurring_transactions where user_id=$1"
+	if dueOnly { q += " and is_active and next_due_date <= current_date and (ends_on is null or next_due_date <= ends_on)" }
+	q += " order by is_active desc,next_due_date,created_at"
+	rows, err := tx.Query(ctx, q, userID)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	out := []domain.RecurringTransaction{}
+	for rows.Next() { x, err := scanRecurring(rows); if err != nil { return nil, err }; out = append(out, x) }
+	return out, rows.Err()
+}
+
+func (r *Repository) CreateRecurring(ctx context.Context, tx pgx.Tx, userID, kind, amount, accountID, categoryID string, description *string, cadence, due string, endsOn *string) (domain.RecurringTransaction, error) {
+	var id string
+	err := tx.QueryRow(ctx, `insert into recurring_transactions(user_id,transaction_type,amount,account_id,category_id,description,cadence,next_due_date,ends_on)
+values($1,$2,$3::numeric,$4,$5,$6,$7,$8::date,$9::date) returning id`, userID, kind, amount, accountID, categoryID, description, cadence, due, endsOn).Scan(&id)
+	if err != nil { return domain.RecurringTransaction{}, err }
+	return r.Recurring(ctx, tx, userID, id, false)
+}
+
+func (r *Repository) UpdateRecurring(ctx context.Context, tx pgx.Tx, userID, id, kind, amount, accountID, categoryID string, description *string, cadence, due string, endsOn *string, active bool) (domain.RecurringTransaction, error) {
+	tag, err := tx.Exec(ctx, `update recurring_transactions set transaction_type=$3,amount=$4::numeric,account_id=$5,category_id=$6,description=$7,cadence=$8,next_due_date=$9::date,ends_on=$10::date,is_active=$11
+where id=$1 and user_id=$2`, id, userID, kind, amount, accountID, categoryID, description, cadence, due, endsOn, active)
+	if err != nil { return domain.RecurringTransaction{}, err }
+	if tag.RowsAffected() == 0 { return domain.RecurringTransaction{}, pgx.ErrNoRows }
+	return r.Recurring(ctx, tx, userID, id, false)
+}
+
+func (r *Repository) AdvanceRecurring(ctx context.Context, tx pgx.Tx, userID, id, processed, next string, active bool) error {
+	tag, err := tx.Exec(ctx, "update recurring_transactions set last_processed_on=$3::date,next_due_date=$4::date,is_active=$5 where id=$1 and user_id=$2", id, userID, processed, next, active)
+	if err != nil { return err }
+	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	return nil
+}
+
+func (r *Repository) DeleteRecurring(ctx context.Context, tx pgx.Tx, userID, id string) error {
+	tag, err := tx.Exec(ctx, "delete from recurring_transactions where id=$1 and user_id=$2", id, userID)
+	if err != nil { return err }
+	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	return nil
+}
+
+func (r *Repository) Dashboard(ctx context.Context, tx pgx.Tx, userID, start, end, groupBy string) (domain.MoneyDashboard, error) {
+	var out domain.MoneyDashboard
+	err := tx.QueryRow(ctx, `with legs as (
+ select account_id,case transaction_type when 'income' then amount else -amount end delta from transactions where user_id=$1
+ union all select transfer_account_id,amount from transactions where user_id=$1 and transaction_type='transfer'
+)
+select coalesce(sum(legs.delta),0)::text from accounts a left join legs on legs.account_id=a.id where a.user_id=$1 and a.archived_at is null`, userID).Scan(&out.TotalBalance)
+	if err != nil { return out, err }
+	err = tx.QueryRow(ctx, `select coalesce(sum(amount) filter(where transaction_type='income'),0)::text,coalesce(sum(amount) filter(where transaction_type='expense'),0)::text
+from transactions where user_id=$1 and transaction_date between $2::date and $3::date`, userID, start, end).Scan(&out.Income, &out.Expense)
+	if err != nil { return out, err }
+	rows, err := tx.Query(ctx, `select c.id,c.name,coalesce(sum(t.amount),0)::text from categories c join transactions t on t.category_id=c.id and t.user_id=c.user_id
+where t.user_id=$1 and t.transaction_type='expense' and t.transaction_date between $2::date and $3::date group by c.id,c.name order by sum(t.amount) desc,lower(c.name)`, userID, start, end)
+	if err != nil { return out, err }
+	defer rows.Close()
+	out.CategorySpend = []domain.CategorySpend{}
+	for rows.Next() { var x domain.CategorySpend; if err := rows.Scan(&x.CategoryID, &x.CategoryName, &x.Amount); err != nil { return out, err }; out.CategorySpend = append(out.CategorySpend, x) }
+	if err := rows.Err(); err != nil { return out, err }
+	unit := map[string]string{"day":"day", "week":"week", "month":"month"}[groupBy]
+	if unit == "" { unit = "day" }
+	trendQ := fmt.Sprintf(`select date_trunc('%s',transaction_date)::date::text,coalesce(sum(amount) filter(where transaction_type='income'),0)::text,coalesce(sum(amount) filter(where transaction_type='expense'),0)::text
+from transactions where user_id=$1 and transaction_date between $2::date and $3::date group by 1 order by 1`, unit)
+	rows, err = tx.Query(ctx, trendQ, userID, start, end)
+	if err != nil { return out, err }
+	defer rows.Close()
+	out.Trend = []domain.MoneyTrendPoint{}
+	for rows.Next() { var x domain.MoneyTrendPoint; if err := rows.Scan(&x.Period, &x.Income, &x.Expense); err != nil { return out, err }; out.Trend = append(out.Trend, x) }
+	return out, rows.Err()
+}

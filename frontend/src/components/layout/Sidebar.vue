@@ -5,6 +5,7 @@
     <nav aria-label="Main navigation">
       <RouterLink to="/tasks">Tasks</RouterLink>
       <RouterLink to="/notes">Notes</RouterLink>
+      <RouterLink to="/money">Money</RouterLink>
       <RouterLink to="/search">Search</RouterLink>
       <RouterLink to="/admin">Settings</RouterLink>
     </nav>

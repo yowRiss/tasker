@@ -5,11 +5,17 @@
         <h1 class="page-title">Notes</h1>
         <p class="muted">Ideas, references, and useful context.</p>
       </div>
-      <button class="button primary" @click="creating = !creating">
+      <button class="button primary" @click="toggleCreate">
         {{ creating ? 'Close' : 'New note' }}
       </button>
     </header>
-    <NoteEditor v-if="creating" @save="create" @cancel="creating = false" />
+    <NoteEditor
+      v-if="creating"
+      :create-for-image="createDraftForImage"
+      @save="saveCreate"
+      @cancel="cancelCreate"
+      @draft-created="draftNoteId = $event.id"
+    />
     <div class="notes-toolbar">
       <input v-model="q" type="search" placeholder="Search notes" aria-label="Search notes" />
     </div>
@@ -33,14 +39,15 @@
 import { onMounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import NoteEditor from '../features/notes/components/NoteEditor.vue'
-import { createNote, listNotes } from '../features/notes/note.api'
+import { createNote, deleteNote, listNotes, updateNote } from '../features/notes/note.api'
 import type { Note, NoteInput } from '../features/notes/note.types'
 const router = useRouter(),
   notes = ref<Note[]>([]),
   q = ref(''),
   loading = ref(false),
   error = ref<string | null>(null),
-  creating = ref(false)
+  creating = ref(false),
+  draftNoteId = ref<string | null>(null)
 let timer: number | undefined
 async function load() {
   loading.value = true
@@ -58,14 +65,38 @@ watch(q, () => {
   clearTimeout(timer)
   timer = window.setTimeout(() => void load(), 250)
 })
-async function create(input: NoteInput) {
+async function createDraftForImage(input: NoteInput) {
+  const note = await createNote(input)
+  draftNoteId.value = note.id
+  return note
+}
+async function saveCreate(input: NoteInput) {
   try {
-    const note = await createNote(input)
+    const note = draftNoteId.value
+      ? await updateNote(draftNoteId.value, input)
+      : await createNote(input)
+    draftNoteId.value = null
     creating.value = false
     await router.push(`/notes/${note.id}`)
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Unable to create note.'
   }
+}
+async function cancelCreate() {
+  if (draftNoteId.value) {
+    try {
+      await deleteNote(draftNoteId.value)
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : 'Unable to discard the draft note.'
+      return
+    }
+  }
+  draftNoteId.value = null
+  creating.value = false
+}
+function toggleCreate() {
+  if (creating.value) void cancelCreate()
+  else creating.value = true
 }
 function excerpt(markdown: string) {
   return (

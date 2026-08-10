@@ -68,7 +68,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export function query(params: Record<string, string | number | undefined | null>) {
+export function query(params: Record<string, string | number | boolean | undefined | null>) {
   const search = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') search.set(key, String(value))

@@ -14,7 +14,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { uploadImage } from '../note.api'
-const props = defineProps<{ noteId: string }>()
+const props = defineProps<{
+  noteId?: string
+  prepareNote?: () => Promise<string>
+}>()
 const emit = defineEmits<{ uploaded: [token: string] }>()
 const picker = ref<HTMLInputElement | null>(null),
   uploading = ref(false),
@@ -33,7 +36,9 @@ async function choose(event: Event) {
   }
   uploading.value = true
   try {
-    emit('uploaded', (await uploadImage(props.noteId, file)).token)
+    const noteId = props.noteId ?? (await props.prepareNote?.())
+    if (!noteId) throw new Error('Save the note before uploading an image.')
+    emit('uploaded', (await uploadImage(noteId, file)).token)
   } catch (cause: unknown) {
     error.value = cause instanceof Error ? cause.message : 'Image upload failed. Please retry.'
   } finally {

@@ -7,7 +7,12 @@
     <div class="toolbar">
       <button class="button" type="button" @click="preview = !preview">
         {{ preview ? 'Edit Markdown' : 'Preview' }}</button
-      ><ImageUploader v-if="noteId && !preview" :note-id="noteId" @uploaded="insert" />
+      ><ImageUploader
+        v-if="!preview"
+        :note-id="currentNoteId"
+        :prepare-note="prepareNoteForImage"
+        @uploaded="insert"
+      />
     </div>
     <div v-if="preview" class="preview card"><MarkdownPreview :content="content" /></div>
     <div v-else class="field">
@@ -29,22 +34,58 @@
   </form>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import ImageUploader from './ImageUploader.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
 import { insertAtCursor } from '../../../lib/markdown/noteImage'
-import type { NoteInput } from '../note.types'
-const props = defineProps<{ initial?: NoteInput; noteId?: string }>()
-const emit = defineEmits<{ save: [input: NoteInput]; cancel: [] }>()
+import type { Note, NoteInput } from '../note.types'
+const props = defineProps<{
+  initial?: NoteInput
+  noteId?: string
+  createForImage?: (input: NoteInput) => Promise<Note>
+}>()
+const emit = defineEmits<{
+  save: [input: NoteInput]
+  cancel: []
+  draftCreated: [note: Note]
+}>()
 const title = ref(props.initial?.title ?? ''),
   content = ref(props.initial?.content_md ?? ''),
   preview = ref(false),
   saving = ref(false),
   error = ref<string | null>(null),
-  area = ref<HTMLTextAreaElement | null>(null)
+  area = ref<HTMLTextAreaElement | null>(null),
+  currentNoteId = ref(props.noteId)
+watch(
+  () => props.noteId,
+  (noteId) => {
+    currentNoteId.value = noteId
+  },
+)
 function insert(token: string) {
   if (area.value) insertAtCursor(area.value, token)
   else content.value += `${content.value ? '\n\n' : ''}${token}`
+}
+async function prepareNoteForImage() {
+  if (currentNoteId.value) return currentNoteId.value
+  const trimmed = title.value.trim()
+  if (!trimmed) throw new Error('Add a title before uploading an image.')
+  if (!props.createForImage) throw new Error('Save the note before uploading an image.')
+
+  error.value = null
+  saving.value = true
+  try {
+    const note = await props.createForImage({ title: trimmed, content_md: content.value })
+    currentNoteId.value = note.id
+    emit('draftCreated', note)
+    return note.id
+  } catch (cause: unknown) {
+    const message = cause instanceof Error ? cause.message : 'Unable to prepare the note for upload.'
+    error.value = message
+    throw new Error(message)
+  } finally {
+    saving.value = false
+  }
 }
 function save() {
   const trimmed = title.value.trim()

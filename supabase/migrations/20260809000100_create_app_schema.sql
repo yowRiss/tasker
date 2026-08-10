@@ -1,7 +1,15 @@
--- Personal Tasks + Notes application schema.
--- auth.users is owned by Supabase Auth and is deliberately not duplicated here.
+-- Personal Tasks + Notes application schema using the local public.admins identity.
 
 create extension if not exists pgcrypto;
+
+-- Local identity must exist before any user-owned application table.
+create table public.admins (
+  id uuid primary key default gen_random_uuid(),
+  username varchar(80) not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
 
 create function public.set_updated_at()
 returns trigger
@@ -13,6 +21,10 @@ begin
   return new;
 end;
 $$;
+
+create trigger admins_set_updated_at
+before update on public.admins
+for each row execute function public.set_updated_at();
 
 create table public.projects (
   id uuid primary key default gen_random_uuid(),

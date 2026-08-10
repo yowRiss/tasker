@@ -22,6 +22,10 @@ const router = createRouter({
       component: () => import('../views/SearchView.vue'),
     },
     {
+      path: '/money',
+      component: () => import('../views/MoneyView.vue'),
+    },
+    {
       path: '/admin',
       component: () => import('../views/AdminView.vue'),
     },

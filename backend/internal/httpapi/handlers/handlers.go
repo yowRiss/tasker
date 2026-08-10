@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"io"
 	"log/slog"
 	"net/http"
@@ -38,8 +39,17 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 func writeErr(w http.ResponseWriter, r *http.Request, e error) {
+	if errors.Is(e, service.ErrValidation) {
+		response.ProblemJSON(w, r, 422, "validation_failed", "Validation failed", nil)
+		return
+	}
 	if errors.Is(e, pgx.ErrNoRows) {
 		response.ProblemJSON(w, r, 404, "not_found", "Resource not found", nil)
+		return
+	}
+	var dbErr *pgconn.PgError
+	if errors.As(e, &dbErr) && (dbErr.Code == "23503" || dbErr.Code == "23505") {
+		response.ProblemJSON(w, r, 409, "conflict", "The record has dependent data or conflicts with an existing record", nil)
 		return
 	}
 	slog.Error("handler error", "request_id", response.RequestID(r), "error", e)
@@ -616,4 +626,3 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
