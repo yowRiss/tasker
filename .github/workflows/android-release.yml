@@ -50,16 +50,12 @@ jobs:
       - name: Build Android Release & Debug APKs
         run: |
           cd android
-          ./gradlew :app:assembleRelease :app:assembleDebug --stacktrace
+          ./gradlew :app:assembleRelease :app:assembleDebug --no-daemon --stacktrace
 
       - name: Prepare APK Artifacts for Release
         run: |
           mkdir -p release-apks
-          
-          # Find and copy built release & debug APKs
-          find android/app/build/outputs/apk/release/ -name "*.apk" -exec cp {} release-apks/Tasker-v1.0.0-release.apk \; 2>/dev/null || true
-          find android/app/build/outputs/apk/debug/ -name "*.apk" -exec cp {} release-apks/Tasker-v1.0.0-debug.apk \; 2>/dev/null || true
-          
+          find android/app/build/outputs/apk/ -name "*.apk" -exec cp {} release-apks/ \;
           echo "=== Built APK Artifacts ==="
           ls -lh release-apks/
 
@@ -104,8 +100,7 @@ jobs:
             - **Offline-First**: Room SQLite DB, WorkManager background sync, `sync_queue` mutation engine
             - **Security**: Hardware-backed `EncryptedSharedPreferences` for JWT storage
           files: |
-            release-apks/Tasker-v1.0.0-release.apk
-            release-apks/Tasker-v1.0.0-debug.apk
+            release-apks/*.apk
           draft: false
           prerelease: false
         env:

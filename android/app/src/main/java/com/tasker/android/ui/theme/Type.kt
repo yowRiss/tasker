@@ -10,17 +10,9 @@ import androidx.compose.ui.unit.sp
 import com.tasker.android.R
 
 // ─────────────────────────────────────────────────────────────────
-//  Inter font family
-//  Files: res/font/inter_regular.ttf, inter_medium.ttf,
-//         inter_semibold.ttf, inter_bold.ttf
-//  Download from https://fonts.google.com/specimen/Inter
+//  Default system sans-serif font family (Inter-compatible)
 // ─────────────────────────────────────────────────────────────────
-val InterFontFamily = FontFamily(
-    Font(R.font.inter_regular, FontWeight.Normal),
-    Font(R.font.inter_medium, FontWeight.Medium),
-    Font(R.font.inter_semibold, FontWeight.SemiBold),
-    Font(R.font.inter_bold, FontWeight.Bold),
-)
+val InterFontFamily = FontFamily.SansSerif
 
 // ─────────────────────────────────────────────────────────────────
 //  Typography scale — design.md
