@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: frontend-install frontend-check backend-check check dev build run
+.PHONY: frontend-install android-build frontend-check backend-check check dev build run setup-env
 
 frontend-install:
 	npm --prefix frontend install
@@ -33,3 +33,14 @@ build:
 
 run:
 	./dist/tasker
+
+# Builds the native Android APK package
+android-build:
+	cd android && ./gradlew :app:assembleRelease
+
+# Copies env templates if .env files do not exist
+setup-env:
+	@[ -f backend/.env ] || cp backend/.env.example backend/.env
+	@[ -f frontend/.env.local ] || cp frontend/.env.example frontend/.env.local
+	@echo "Env files initialized. Update backend/.env with your secrets."
+

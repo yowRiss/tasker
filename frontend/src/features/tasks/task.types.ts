@@ -10,6 +10,21 @@ export interface Project {
   color: string | null
   is_archived: boolean
 }
+export interface Subtask {
+  id: string
+  task_id: string
+  title: string
+  completed: boolean
+  position: number
+  created_at: string
+  updated_at: string
+}
+export interface SubtaskInput {
+  id?: string
+  title: string
+  completed: boolean
+  position?: number
+}
 export interface Task {
   id: string
   title: string
@@ -20,6 +35,7 @@ export interface Task {
   completed_at: string | null
   priority: Priority
   tags: Tag[]
+  subtasks: Subtask[]
   created_at: string
   updated_at: string
 }
@@ -30,6 +46,7 @@ export interface TaskInput {
   priority: Priority
   project_id: string | null
   tag_ids: string[]
+  subtasks?: SubtaskInput[]
 }
 export interface Page<T> {
   items: T[]

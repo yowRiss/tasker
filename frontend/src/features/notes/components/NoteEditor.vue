@@ -1,71 +1,203 @@
 <template>
   <form class="note-editor" @submit.prevent="save">
     <div class="field">
-      <label for="note-title">Title</label
-      ><input id="note-title" v-model="title" maxlength="280" required />
+      <label for="note-title">Title</label>
+      <input id="note-title" v-model="title" maxlength="280" required />
     </div>
+
     <div class="toolbar">
       <button class="button" type="button" @click="preview = !preview">
-        {{ preview ? 'Edit Markdown' : 'Preview' }}</button
-      ><ImageUploader
+        {{ preview ? 'Edit Markdown' : 'Preview Note' }}
+      </button>
+      <ImageUploader
         v-if="!preview"
         :note-id="currentNoteId"
         :prepare-note="prepareNoteForImage"
-        @uploaded="insert"
+        @uploaded="handleImageUploaded"
       />
     </div>
-    <div v-if="preview" class="preview card"><MarkdownPreview :content="content" /></div>
+
+    <div v-if="preview" class="preview card">
+      <MarkdownPreview :content="content" />
+    </div>
     <div v-else class="field">
-      <label for="note-content">Markdown</label
-      ><textarea
+      <label for="note-content">Markdown Content</label>
+      <textarea
         id="note-content"
-        ref="area"
         v-model="content"
-        rows="18"
-        placeholder="Write in Markdown…"
+        rows="16"
+        placeholder="Write your note in Markdown…"
       />
     </div>
+
+    <!-- Dedicated Attached Images Gallery (Separate from text input) -->
+    <div v-if="attachedImages.length" class="attached-section card">
+      <div class="attached-header">
+        <h4 class="attached-title">🖼️ Uploaded Images ({{ attachedImages.length }})</h4>
+        <span class="muted font-small">Images are attached to this note</span>
+      </div>
+
+      <div class="image-grid">
+        <div v-for="img in attachedImages" :key="img.id" class="image-card">
+          <div
+            class="thumb-wrapper clickable-thumb"
+            title="Click to view full image and zoom"
+            @click="img.url && !img.hasError && openZoom(img.url, img.filename)"
+          >
+            <img
+              v-if="img.url && !img.hasError"
+              :src="img.url"
+              :alt="img.filename"
+              class="thumb"
+              @error="handleImgError(img.id)"
+            />
+            <span v-else-if="img.hasError" class="loading-thumb error-thumb">Failed to load preview</span>
+            <span v-else class="loading-thumb">Loading image…</span>
+          </div>
+
+          <div class="image-details">
+            <span class="filename" :title="img.filename">{{ img.filename }}</span>
+            <button
+              type="button"
+              class="button subtle danger font-small remove-btn"
+              @click="removeAttachedImage(img.id)"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <p v-if="error" class="notice">{{ error }}</p>
+
     <div class="actions">
       <button class="button primary" :disabled="saving">
-        {{ saving ? 'Saving…' : 'Save note' }}</button
-      ><button class="button subtle" type="button" @click="$emit('cancel')">Cancel</button>
+        {{ saving ? 'Saving…' : 'Save note' }}
+      </button>
+      <button class="button subtle" type="button" @click="$emit('cancel')">Cancel</button>
     </div>
+
+    <ImageLightbox
+      v-if="selectedImage"
+      :is-open="!!selectedImage"
+      :src="selectedImage.src"
+      :title="selectedImage.title"
+      @close="selectedImage = null"
+    />
   </form>
 </template>
+
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import ImageUploader from './ImageUploader.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
-import { insertAtCursor } from '../../../lib/markdown/noteImage'
-import type { Note, NoteInput } from '../note.types'
+import ImageLightbox from '../../../components/ui/ImageLightbox.vue'
+import { deleteImage, imageAccess } from '../note.api'
+import { imageIds } from '../../../lib/markdown/noteImage'
+import type { Note, NoteImage, NoteInput } from '../note.types'
+
+interface AttachedItem {
+  id: string
+  url?: string
+  filename: string
+  hasError?: boolean
+}
+
+const selectedImage = ref<{ src: string; title: string } | null>(null)
+
+function openZoom(src: string, title: string) {
+  selectedImage.value = { src, title }
+}
+
+function handleImgError(id: string) {
+  const item = attachedImages.value.find((img) => img.id === id)
+  if (item) {
+    item.hasError = true
+  }
+}
+
 const props = defineProps<{
   initial?: NoteInput
   noteId?: string
   createForImage?: (input: NoteInput) => Promise<Note>
 }>()
+
 const emit = defineEmits<{
   save: [input: NoteInput]
   cancel: []
   draftCreated: [note: Note]
 }>()
-const title = ref(props.initial?.title ?? ''),
-  content = ref(props.initial?.content_md ?? ''),
-  preview = ref(false),
-  saving = ref(false),
-  error = ref<string | null>(null),
-  area = ref<HTMLTextAreaElement | null>(null),
-  currentNoteId = ref(props.noteId)
+
+const title = ref(props.initial?.title ?? '')
+const content = ref(props.initial?.content_md ?? '')
+const preview = ref(false)
+const saving = ref(false)
+const error = ref<string | null>(null)
+const currentNoteId = ref(props.noteId)
+const attachedImages = ref<AttachedItem[]>([])
+
 watch(
   () => props.noteId,
   (noteId) => {
     currentNoteId.value = noteId
   },
 )
-function insert(token: string) {
-  if (area.value) insertAtCursor(area.value, token)
-  else content.value += `${content.value ? '\n\n' : ''}${token}`
+
+async function loadExistingImages() {
+  const rawContent = props.initial?.content_md ?? ''
+  const ids = imageIds(rawContent)
+
+  // Clean text for textarea input so user's editor input stays clean
+  let cleanText = rawContent
+  for (const id of ids) {
+    cleanText = cleanText.replace(new RegExp(`\\s*note-image:${id}\\s*`, 'g'), ' ')
+  }
+  content.value = cleanText.trim()
+
+  for (const id of ids) {
+    if (!attachedImages.value.some((img) => img.id === id)) {
+      try {
+        const access = await imageAccess(id)
+        attachedImages.value.push({
+          id,
+          url: access.url,
+          filename: `Attached Image`,
+        })
+      } catch {
+        // Image unavailable
+      }
+    }
+  }
 }
+
+onMounted(() => void loadExistingImages())
+
+async function handleImageUploaded(res: { image: NoteImage; token: string }) {
+  error.value = null
+  try {
+    const access = await imageAccess(res.image.id)
+    attachedImages.value.push({
+      id: res.image.id,
+      url: access.url,
+      filename: res.image.original_filename || 'Uploaded Image',
+    })
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Failed to load image preview.'
+  }
+}
+
+async function removeAttachedImage(id: string) {
+  if (!confirm('Are you sure you want to delete this image attachment?')) return
+  try {
+    await deleteImage(id)
+    attachedImages.value = attachedImages.value.filter((img) => img.id !== id)
+    content.value = content.value.replace(new RegExp(`note-image:${id}`, 'g'), '').trim()
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Failed to delete image.'
+  }
+}
+
 async function prepareNoteForImage() {
   if (currentNoteId.value) return currentNoteId.value
   const trimmed = title.value.trim()
@@ -87,6 +219,7 @@ async function prepareNoteForImage() {
     saving.value = false
   }
 }
+
 function save() {
   const trimmed = title.value.trim()
   if (!trimmed) {
@@ -94,10 +227,22 @@ function save() {
     return
   }
   saving.value = true
-  emit('save', { title: trimmed, content_md: content.value })
+
+  let fullContent = content.value
+  const existingIds = new Set(imageIds(fullContent))
+  const missingImages = attachedImages.value.filter((img) => !existingIds.has(img.id))
+  if (missingImages.length) {
+    fullContent =
+      fullContent +
+      (fullContent ? '\n\n' : '') +
+      missingImages.map((img) => `note-image:${img.id}`).join('\n')
+  }
+
+  emit('save', { title: trimmed, content_md: fullContent })
   saving.value = false
 }
 </script>
+
 <style scoped>
 .note-editor {
   display: grid;
@@ -112,5 +257,74 @@ function save() {
 .preview {
   min-height: 20rem;
   padding: 1rem;
+}
+.attached-section {
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+  background: var(--surface-muted);
+}
+.attached-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.attached-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.font-small {
+  font-size: 0.8rem;
+}
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+  gap: 0.75rem;
+}
+.image-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.thumb-wrapper {
+  width: 100%;
+  height: 10rem;
+  background: #f4f5f1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.clickable-thumb {
+  cursor: zoom-in;
+}
+.thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.loading-thumb {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.image-details {
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.4rem;
+}
+.filename {
+  font-size: 0.8rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.remove-btn {
+  width: 100%;
 }
 </style>

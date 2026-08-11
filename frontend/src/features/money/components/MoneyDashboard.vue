@@ -210,7 +210,7 @@ function formatIDR(valStr: string): string {
 }
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
   gap: var(--space-4);
 }
 .metric-card {
@@ -245,13 +245,31 @@ function formatIDR(valStr: string): string {
 }
 .reports-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
   gap: var(--space-5);
 }
 @media (max-width: 800px) {
   .period-bar {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+  .presets-row,
+  .date-controls {
+    width: 100%;
+  }
+}
+@media (max-width: 500px) {
+  .date-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .field-inline {
+    justify-content: space-between;
+  }
+  .field-inline input,
+  .field-inline select {
+    flex: 1;
   }
 }
 </style>

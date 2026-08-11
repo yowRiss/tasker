@@ -87,7 +87,7 @@ function formatIDR(valStr: string): string {
 <style scoped>
 .recurring-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
   gap: var(--space-4);
 }
 .recurring-card {

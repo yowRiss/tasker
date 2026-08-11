@@ -26,6 +26,14 @@ const router = createRouter({
       component: () => import('../views/MoneyView.vue'),
     },
     {
+      path: '/archive',
+      component: () => import('../views/ArchiveView.vue'),
+    },
+    {
+      path: '/tasks/archive',
+      redirect: '/archive',
+    },
+    {
       path: '/admin',
       component: () => import('../views/AdminView.vue'),
     },

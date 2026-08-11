@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 	"time"
 )
@@ -33,8 +32,16 @@ func (s *Storage) request(ctx context.Context, method, target string, body io.Re
 	}
 	return s.client.Do(r)
 }
+func escapeObjectPath(object string) string {
+	parts := strings.Split(object, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
+}
+
 func (s *Storage) Upload(ctx context.Context, object, mime string, body []byte) error {
-	r, e := s.request(ctx, http.MethodPost, s.base+"/storage/v1/object/note-images/"+url.PathEscape(object), bytes.NewReader(body), mime)
+	r, e := s.request(ctx, http.MethodPost, s.base+"/storage/v1/object/note-images/"+escapeObjectPath(object), bytes.NewReader(body), mime)
 	if e != nil {
 		return e
 	}
@@ -58,7 +65,7 @@ func (s *Storage) Delete(ctx context.Context, object string) error {
 }
 func (s *Storage) SignedURL(ctx context.Context, object string) (string, error) {
 	b, _ := json.Marshal(map[string]int{"expiresIn": 3600})
-	r, e := s.request(ctx, http.MethodPost, s.base+"/storage/v1/object/sign/note-images/"+url.PathEscape(object), bytes.NewReader(b), "application/json")
+	r, e := s.request(ctx, http.MethodPost, s.base+"/storage/v1/object/sign/note-images/"+escapeObjectPath(object), bytes.NewReader(b), "application/json")
 	if e != nil {
 		return "", e
 	}
@@ -75,5 +82,9 @@ func (s *Storage) SignedURL(ctx context.Context, object string) (string, error) 
 	if strings.HasPrefix(out.SignedURL, "http") {
 		return out.SignedURL, nil
 	}
-	return s.base + path.Clean("/storage/v1"+out.SignedURL), nil
+	u := out.SignedURL
+	if !strings.HasPrefix(u, "/storage/v1") {
+		u = "/storage/v1" + u
+	}
+	return s.base + u, nil
 }

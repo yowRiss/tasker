@@ -1,0 +1,212 @@
+package com.tasker.android.ui.notes
+
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import com.tasker.android.ui.theme.TaskerTheme
+import java.io.File
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NoteDetailScreen(
+    noteId: String?,
+    onBack: () -> Unit,
+    viewModel: NoteDetailViewModel = hiltViewModel(),
+) {
+    val colors = TaskerTheme.colors
+    val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    LaunchedEffect(noteId) {
+        viewModel.initialize(noteId)
+    }
+
+    LaunchedEffect(uiState.isSaved) {
+        if (uiState.isSaved) onBack()
+    }
+
+    // Photo picker launcher
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.attachImage(it) }
+    }
+
+    Scaffold(
+        containerColor = colors.background,
+        topBar = {
+            TopAppBar(
+                title = { Text(if (noteId == null) "New Note" else "Edit Note", color = colors.textPrimary) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Outlined.ArrowBack, "Back", tint = colors.textPrimary)
+                    }
+                },
+                actions = {
+                    // Preview / Edit toggle
+                    IconButton(onClick = viewModel::togglePreviewMode) {
+                        Icon(
+                            imageVector = if (uiState.isPreviewMode) Icons.Outlined.Edit else Icons.Outlined.Visibility,
+                            contentDescription = if (uiState.isPreviewMode) "Edit Mode" else "Preview Mode",
+                            tint = colors.accent
+                        )
+                    }
+                    // Photo picker
+                    IconButton(onClick = {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }) {
+                        Icon(Icons.Outlined.AddPhotoAlternate, "Attach Image", tint = colors.textPrimary)
+                    }
+                    if (noteId != null) {
+                        IconButton(onClick = viewModel::deleteNote) {
+                            Icon(Icons.Outlined.Delete, "Delete", tint = colors.destructive)
+                        }
+                    }
+                    IconButton(onClick = viewModel::saveNote, enabled = !uiState.isLoading) {
+                        Icon(Icons.Rounded.Check, "Save", tint = colors.accent)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(colors.background)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Error banner
+            uiState.errorMessage?.let { err ->
+                Surface(
+                    color = colors.destructiveSubtle,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = err,
+                        color = colors.destructive,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            // Note Title
+            OutlinedTextField(
+                value = uiState.title,
+                onValueChange = viewModel::onTitleChange,
+                label = { Text("Note Title *") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = taskerOutlinedTextFieldColors(),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Attached Images Carousel
+            if (uiState.images.isNotEmpty()) {
+                Text("Images", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(uiState.images) { img ->
+                        Card(
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.size(100.dp)
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(File(img.localUri))
+                                    .build(),
+                                contentDescription = img.altText ?: "Note Image",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Note Content Editor / Preview
+            Surface(
+                color = colors.surface,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                if (uiState.isPreviewMode) {
+                    // Preview Mode: render content
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = uiState.contentMd.ifBlank { "(Empty note)" },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = colors.textPrimary
+                        )
+                    }
+                } else {
+                    // Edit Mode: TextField for Markdown
+                    OutlinedTextField(
+                        value = uiState.contentMd,
+                        onValueChange = viewModel::onContentChange,
+                        placeholder = { Text("Write your markdown notes here...", color = colors.textTertiary) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedContainerColor = colors.surface,
+                            unfocusedContainerColor = colors.surface,
+                        ),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun taskerOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = TaskerTheme.colors.accent,
+    unfocusedBorderColor = TaskerTheme.colors.border,
+    focusedLabelColor = TaskerTheme.colors.accent,
+    unfocusedLabelColor = TaskerTheme.colors.textTertiary,
+    cursorColor = TaskerTheme.colors.accent,
+    focusedContainerColor = TaskerTheme.colors.surfaceAlt,
+    unfocusedContainerColor = TaskerTheme.colors.surfaceAlt,
+)

@@ -69,3 +69,16 @@ Thumbs.db
 *.sln
 *.swp
 *.swo
+
+# Android build outputs & local secrets
+.gradle/
+**/.gradle/
+local.properties
+android/local.properties
+android/app/build/
+android/.gradle/
+android/.idea/
+*.keystore
+*.jks
+release-apks/
+

@@ -1,124 +1,358 @@
-# Personal Tasks + Notes + Money — Mobile Product Requirements Document (Android)
+# Tasker Mobile — Product Requirements Document (Kotlin/Jetpack Compose)
+
+> **Rewrite context**: This document supersedes the React Native/Expo PRD. The functional
+> scope, data model, API contract, offline-first requirement, and conflict-resolution
+> strategy are **unchanged**. Only the platform implementation changes: React Native →
+> native Kotlin + Jetpack Compose. The Go backend and Supabase schema are **not modified**.
+
+---
 
 ## Overview
 
-The Mobile Client for Personal Tasks + Notes + Money is an offline-first Android application built with React Native (Expo) that communicates with the existing Go backend and Supabase Postgres/Storage instance. 
+A native Android application for Tasker delivering full feature parity across Tasks,
+Notes, and Money Management. The app is **offline-first**: every read and write hits
+local Room/SQLite first; a background sync engine reconciles with the Go `/v1/*` API
+when connectivity is available.
 
-The primary goal of the mobile client is to provide a fluid, instant, and reliable personal productivity experience on mobile devices regardless of network conditions. Reads and writes operate against local storage first, ensuring zero network latency for user interactions. Local mutations are queued and automatically synchronized with the Go API in the background when connectivity is available.
-
----
-
-## Goals & Non-Goals
-
-### Goals
-
-- **100% Offline Capability**: Allow full access to create, view, edit, complete, search, and delete tasks, notes, and financial transactions without an active internet connection.
-- **Local-First Responsiveness**: All UI reads render immediately from local storage (SQLite). All UI writes commit to local storage synchronously with zero network blocking.
-- **Background Synchronization**: Automatically flush pending changes to the Go `/v1/*` REST API when network connectivity is detected, and pull server changes to update local storage.
-- **Offline Image & Receipt Capture**: Enable users to take photos or pick images for notes and transaction receipts while offline, storing them locally and uploading them seamlessly once online.
-- **Clear Sync Status Visibility**: Give users persistent, unobtrusive visual feedback regarding network state (online/offline) and pending sync queue item counts.
-- **Resilience to Network Flakiness**: Gracefully handle partial connectivity, request timeouts, and unexpected app terminations mid-sync without duplicating data or corrupting the queue.
-
-### Non-Goals
-
-- **Multi-User Collaboration / Real-Time Editing**: V1 is single-user across devices (phone + web). Multi-user sync, live cursor presence, or Operational Transform / CRDT engines are explicitly out of scope.
-- **Duplicate Backend Logic**: The mobile app does not implement a separate backend or shadow database logic; the server remains the ultimate source of truth for long-term storage and cross-device state.
-- **iOS Support in V1**: The initial release targets Android exclusively. However, cross-platform React Native / Expo conventions are maintained so iOS support can be added in a future release without re-architecting native code.
+**Why native Kotlin?**  
+The React Native/Expo build was ~85 MB and runs the Hermes JS engine + RN bridge at all
+times — even at idle. A native Kotlin/Compose release build with R8/ProGuard shrinking
+should land **under 15–20 MB** and use substantially less RAM because there is no JS
+engine or bridge process.
 
 ---
 
-## Target Platform & Android Specifics
+## Platform Target
 
-- **Target Platform**: Android 8.0 (API Level 26) and higher.
-- **Framework**: React Native with Expo Managed Workflow.
-- **Android Native Behaviors & Permissions**:
-  - **Camera & Storage Permissions**: Handled via standard Android runtime permission prompts when adding note images or transaction receipts (`CAMERA`, `READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE`).
-  - **Scoped Storage**: Local images are stored securely within the app's sandboxed document directory (`FileSystem.documentDirectory`).
-  - **Background Task Execution**: Respects Android Doze mode and OEM battery optimizations by executing sync primarily on app foreground / network reconnect triggers, with optional background sync registered via Android JobScheduler / Expo TaskManager.
-
----
-
-## Feature Parity & Mobile Scope
-
-| Feature Module | Functional Scope | Mobile Adaptations & Offline Behavior |
-| :--- | :--- | :--- |
-| **App Shell & Nav** | Shared workspace navigation, authentication state, sync status header. | Bottom tab navigation for Tasks, Notes, Money, and Search. Header status bar showing online/offline status and pending sync count. |
-| **Task Manager** | Tasks, subtasks, projects, tags, priorities (0–3), due dates, completion state. | Instant offline CRUD. Subtasks and tag associations stored locally in SQLite. Due date selection uses native Android date pickers. |
-| **Notes & Images** | Markdown editor, preview mode, tag assignment, task links, note image attachments. | Full offline Markdown editing. Images captured via camera/gallery are saved locally, displayed instantly via `file://` URIs, inserted as `note-image:<id>` references, and queued for background upload. |
-| **Money Management** | Accounts (cash, bank, e-wallet, credit card), Income/Expense/Transfer transactions, Categories, Budgets, Recurring Transaction prompts, Money Dashboard summaries. | Local SQLite computes real-time account balances, period spending, and budget progress offline. Offline receipt attachment following the same local-file-first image model. |
-| **Unified Search** | Cross-module search for tasks, notes, and transactions. | Instant full-text search executed locally against SQLite tables using debounced input. |
+| Attribute         | Value                                      |
+|------------------|--------------------------------------------|
+| Language          | Kotlin                                     |
+| UI toolkit        | Jetpack Compose (Material 3)               |
+| Min SDK           | Android 10 / API 29                        |
+| Target SDK        | Android 15 / API 35                        |
+| Distribution      | Release APK + AAB (Play Store compatible)  |
 
 ---
 
-## Offline-First Operating Model
+## Size & Performance Targets
 
-### 1. Read Path
-All screens read data exclusively from the local SQLite database. When a view mounts or query parameters change, the UI subscribes to local database state. No HTTP requests are issued on the critical render path.
-
-### 2. Write Path
-When a user creates, edits, completes, or deletes an item:
-1. The mutation is saved immediately to the local SQLite database within a database transaction.
-2. A corresponding mutation payload is written to the `sync_queue` table with status `pending`.
-3. Local reactive subscriptions fire immediately, updating the UI in < 50 ms.
-4. The Sync Engine is notified to process the queue if the device is currently online.
-
-### 3. Offline Image & Receipt Strategy
-1. **Selection/Capture**: When a user selects or captures an image, the raw file is copied to the app's persistent local directory (`FileSystem.documentDirectory + 'images/...'`).
-2. **Local Reference**: A record is created in local `note_images` or `transaction_receipts` with `local_uri` set to the local file path and `sync_status = 'pending'`.
-3. **Queue Entry**: A special queue operation (`UPLOAD_IMAGE` or `UPLOAD_RECEIPT`) is inserted into `sync_queue`.
-4. **Immediate Display**: The note preview or transaction detail view displays the image immediately using the local `file://` URI.
-5. **Background Upload**: Once online, the file is uploaded to Go `/v1/notes/{noteId}/images` or `/v1/transactions/{transactionId}/receipt` via multipart form data. On success, local state updates to `sync_status = 'synced'` and stores the remote access path.
+| Metric              | Target              | Baseline (RN)  |
+|--------------------|---------------------|----------------|
+| Release APK         | ≤ 20 MB             | ~85 MB         |
+| Release AAB         | ≤ 15 MB             |                |
+| Cold start (P90)    | < 1.5 s             |                |
+| Local DB read       | < 50 ms             | < 50 ms        |
+| Sync cycle          | < 5 s typical       | < 5 s          |
+| Idle RAM            | < 80 MB             |                |
 
 ---
 
-## Conflict Resolution Strategy
+## Features
 
-### Strategy: Last-Write-Wins (LWW) with Soft Deletion
+### Authentication
+- Login screen: **username** + password (the backend uses `username`, not `email`)
+- Single JWT token returned as `{ token, user }` from `POST /v1/auth/login`
+- Token stored in **`EncryptedSharedPreferences`** (Jetpack Security)
+- `remember_me: true` extends TTL to 7 days (default 24 h)
+- On 401: clear token, navigate to login
+- Logout: clears token; optional prompt to wipe local data
 
-Since this application is designed for a single user operating across a phone and a web browser, true multi-user concurrent editing does not occur. Conflicts only arise when a user modifies the same entity offline on mobile while previously editing it on the web (or vice versa).
+### Task Management
+- Projects: create, list, archive — tasks grouped by project
+- Tags: create, list, assign to tasks/notes
+- Task list with filters: status (`open` / `completed` / `all` / `archived`), project,
+  tag, priority (int 0–3), free-text search
+- Create/edit task: title, description, due date, priority, project, tags, subtasks
+- Subtasks: inline list; create/update/delete per task
+- Swipe-to-complete gesture
+- Task ↔ Note linking (via join-table operations)
 
-1. **Timestamp Comparison**:
-   - Entities maintain ISO 8601 UTC `updated_at` timestamps.
-   - When pulling server changes during sync, if `server.updated_at > local.updated_at` AND the local entity has no active unsynced mutations in `sync_queue`, the local SQLite record is updated with the server state.
-   - When pushing queued local mutations to the server, the server updates `updated_at` upon receiving the request.
+### Notes
+- Note list with search and tag filter
+- Markdown editor (write + preview toggle)
+- Image attachments: capture via CameraX or system photo picker; stored locally until
+  synced; signed-URL access after upload
+- Full-screen image viewer
+- Notes can be linked to tasks
 
-2. **Soft Deletion (`is_deleted`)**:
-   - Deletions performed offline set `is_deleted = 1` and `updated_at = NOW()` locally, and enqueue a `DELETE` operation in `sync_queue`.
-   - If a pull sync encounters a server deletion or soft-deleted record, `is_deleted = 1` takes precedence over older local edits (`updated_at` comparison), preventing "ghost resurrections" of deleted items.
+### Money Management
+- **Accounts**: list, create, archive; balance shown (decimal string from server)
+- **Categories**: list, create, archive; typed as `income` or `expense`
+- **Transactions**: list (filterable by account, category, type, date range, amount,
+  search); create/edit/delete; receipt image attach+upload
+- **Recurring Transactions**: list, create, update, delete; confirm (creates real tx) or
+  skip
+- **Budgets**: list, create, update, delete; display computed `spent`, `remaining`,
+  `percent_used`, `is_over_budget`
+- **Money Dashboard**: total balance, income vs. expense summary, category spend
+  breakdown, trend data — rendered with Compose Canvas (no heavy charting library)
 
-3. **Permanent Failure Protection (Poison Pill Handling)**:
-   - If a queued mutation fails on the server with a permanent error (e.g. `409 Conflict`, `422 Validation Error`, or broken foreign key constraint):
-     - The mutation is marked as `failed` in `sync_queue` with the error message stored in `last_error`.
-     - The item is NOT deleted from the queue, and queue processing continues for non-dependent items.
-     - A non-blocking alert banner appears in the Sync Status UI, allowing the user to view the error, edit the record to fix validation, or manually discard the queued mutation. This guarantees **zero silent data loss**.
+### Settings
+- Theme: light / dark / follow system
+- Sync status: last sync time, pending queue count, failed count
+- Manual sync trigger
+- Change password (`PATCH /v1/auth/password`)
+- Logout
+
+### Sync Status UI
+- Persistent online/offline badge on all main screens
+- Pending mutation count badge
+- In-line error card for permanently failed sync items
 
 ---
 
-## Sync Status Visibility & User Experience
+## Data Model (local Room schema)
 
-The application provides continuous visual feedback regarding connectivity and sync progress:
+The Room schema mirrors the actual backend domain model discovered from the live codebase.
+Notable **corrections vs. the old RN PRD**:
 
-1. **Header Sync Badge**:
-   - **Online (Synced)**: Subtle green indicator or clean header state when all changes are synced.
-   - **Offline Mode**: Amber badge indicating `Offline — local changes saved`.
-   - **Syncing in Progress**: Animated blue indicator displaying `Syncing (N remaining)...`.
-   - **Sync Error**: Red alert badge indicating `N items failed to sync — tap to resolve`.
+| Old PRD assumption          | Actual backend                             |
+|----------------------------|--------------------------------------------|
+| `email` login field         | `username` login field                     |
+| `status` text enum (todo/…) | `status` text (`open`/`completed`/`archived`) |
+| `priority` text enum        | `priority` integer 0–3                     |
+| No Projects entity          | `projects` is a first-class entity         |
+| Tags on tasks via array     | `task_tags` join table                     |
+| `content` note field        | `content_md` note field                    |
+| Monolithic sync push/pull   | Per-entity list pulls + per-item push with ID remap |
+| No receipt upload endpoint  | `POST /v1/transactions/:id/receipt` confirmed |
 
-2. **Per-Item Status Badges**:
-   - Items with pending offline writes exhibit a subtle clock/sync icon.
-   - Items with failed uploads show a retry badge with a quick-action context menu (Retry / Edit / Discard).
+### Room entities (translated from actual SQLite schema)
 
-3. **Sync Management Drawer / Screen**:
-   - A dedicated view accessible from Settings/Header listing all items in `sync_queue`, their status (`pending`, `processing`, `failed`), retry attempts, and options for manual forced sync or clearing failed entries.
+**Tasks module**: `ProjectEntity`, `TagEntity`, `TaskEntity`, `SubtaskEntity`,
+`TaskTagEntity`, `NoteTaskLinkEntity`
+
+**Notes module**: `NoteEntity`, `NoteTagEntity`, `NoteImageEntity`
+
+**Money module**: `AccountEntity`, `CategoryEntity`, `TransactionEntity`,
+`TransactionReceiptEntity`, `BudgetEntity`, `RecurringTransactionEntity`
+
+**Sync infrastructure**: `SyncQueueEntity`, `SyncMetadataEntity`
+
+### `sync_queue` table
+
+```sql
+CREATE TABLE sync_queue (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type  TEXT NOT NULL,              -- task | project | tag | note |
+                                             --   note_image | account | category |
+                                             --   transaction | transaction_receipt | budget
+    entity_id    TEXT NOT NULL,              -- client-side UUID (may be remapped)
+    operation    TEXT NOT NULL,              -- CREATE | UPDATE | DELETE |
+                                             --   UPLOAD_IMAGE | UPLOAD_RECEIPT
+    payload      TEXT NOT NULL,             -- JSON blob
+    created_at   TEXT NOT NULL,             -- ISO 8601
+    retry_count  INTEGER DEFAULT 0,
+    last_error   TEXT,
+    status       TEXT DEFAULT 'pending'     -- pending | processing | failed
+);
+```
+
+### `sync_metadata` table
+
+```sql
+CREATE TABLE sync_metadata (
+    table_name    TEXT PRIMARY KEY,
+    last_synced_at TEXT NOT NULL,
+    sync_cursor   TEXT            -- reserved for future cursor-based pagination
+);
+```
 
 ---
 
-## Non-Functional Requirements
+## Offline-First Architecture
 
-- **Cold Start Time**: Application launch to interactive local view in under 1.5 seconds on mid-range Android hardware.
-- **Memory & Storage Footprint**: Base APK under 30 MB (Expo managed build). SQLite storage footprint capped efficiently through periodic WAL checkpointing.
-- **Battery & Data Optimization**:
-  - NetInfo listener debounces network state changes to avoid sync storms on unstable Wi-Fi/cellular transitions.
-  - Backoff strategy prevents repeated aggressive API calls when server or network is unresponsive.
-  - Upload streams compress oversized images client-side before sending to conserve mobile data.
-- **Flaky Network Tolerance**: Request timeouts set to 15 seconds. If a connection drops mid-request, the transaction rolls back cleanly in Go and the queued mutation remains `pending` for the next retry attempt.
+### Sync Engine
+
+The sync engine replicates the **actual RN implementation** (which deviates from the
+original PRD's description of a `POST /v1/sync/push` + `GET /v1/sync/pull` batch
+protocol). The real pattern, confirmed from the live codebase, is:
+
+**Push (per-item)**:
+1. Read rows from `sync_queue` where `status IN ('pending', 'failed')` and
+   `retry_count < 10`, ordered by `id ASC`
+2. For each item, call the specific REST endpoint:
+   - `CREATE task` → `POST /v1/tasks`
+   - `UPDATE task` → `PATCH /v1/tasks/:id`
+   - `DELETE task` → `DELETE /v1/tasks/:id`
+   - … same pattern for projects, tags, notes, accounts, categories, transactions, budgets
+   - `UPLOAD_IMAGE` → `POST /v1/notes/:id/images` (multipart)
+   - `UPLOAD_RECEIPT` → `POST /v1/transactions/:id/receipt` (multipart)
+3. On success: if server returns a different UUID (`res.id != entity_id`), run an
+   **ID remap** — atomically update all FK references across all local tables and the
+   queue itself. Then delete the queue row.
+4. On 401: pause queue processing, trigger re-auth / navigate to login.
+5. On network/5xx (transient): increment `retry_count`, set `status = 'pending'`,
+   pause batch (will retry on next sync trigger).
+6. On 4xx validation (permanent): set `status = 'failed'`, surface to user.
+
+**Pull (per-entity)**:
+After push completes (or on reconnect with empty queue), pull each entity type independently:
+
+| Entity           | Endpoint                                    | Notes                  |
+|-----------------|---------------------------------------------|------------------------|
+| Projects         | `GET /v1/projects`                          | `items[]`              |
+| Tags             | `GET /v1/tags`                              | `items[]`              |
+| Tasks            | `GET /v1/tasks?status=all&limit=1000`       | with subtasks + tags   |
+| Notes            | `GET /v1/notes?limit=1000`                  | with tags              |
+| Accounts         | `GET /v1/accounts`                          | `items[]`              |
+| Categories       | `GET /v1/categories`                        | `items[]`              |
+| Transactions     | `GET /v1/transactions?limit=1000`           | `items[]`              |
+| Budgets          | `GET /v1/budgets`                           | computed fields inline |
+| Recurring        | `GET /v1/recurring-transactions`            | `items[]`              |
+
+For each pulled record:
+- **Skip** if the entity has a pending mutation in `sync_queue` (local is source-of-truth
+  until pushed).
+- **Upsert** if server `updated_at >= local updated_at`.
+- **Keep local** if local `updated_at > server updated_at` (local is newer — still queued).
+- On next pull cycle, `last_synced_at` in `sync_metadata` is updated.
+
+### ID Remapping
+
+When the server assigns a canonical UUID different from the client's temp UUID (e.g., on
+`CREATE`), an `IdRemapper` runs within a single SQLite transaction updating:
+- The entity's own table PK
+- All FK columns in dependent tables
+- All `sync_queue` rows referencing the old `entity_id`
+
+This must execute atomically before deleting the queue item.
+
+### Sync Triggers
+
+| Trigger               | Mechanism                                                 |
+|-----------------------|-----------------------------------------------------------|
+| Network reconnect      | `ConnectivityManager.NetworkCallback` → AVAILABLE          |
+| Foreground periodic    | Coroutine timer every 60 s while app is in foreground     |
+| Background periodic    | `WorkManager.PeriodicWorkRequest` (15–30 min minimum)     |
+| Manual               | ViewModel call from pull-to-refresh / Settings button     |
+
+> **Note**: Android enforces a 15-minute minimum interval for `PeriodicWorkRequest`.
+> The sub-minute foreground sync is handled by a coroutine loop, not WorkManager.
+
+### Conflict Resolution
+- **Last-write-wins by `updated_at`**
+- If a local record has a pending queue entry → **keep local** (do not overwrite during pull)
+- If server `updated_at >= local updated_at` and no queue entry → **server wins**
+
+### Image Upload
+- Capture: **CameraX** `ImageCapture` use-case
+- Pick: `ActivityResultContracts.PickVisualMedia`
+- Storage: app-internal `context.filesDir/images/`
+- Compression: max 1024 px long edge, JPEG 80% quality before upload
+- Note images: enqueue `UPLOAD_IMAGE` op → `POST /v1/notes/:id/images` (multipart `file`)
+- Receipt images: enqueue `UPLOAD_RECEIPT` op → `POST /v1/transactions/:id/receipt` (multipart `file`)
+- After upload: store returned `object_path` / signed URL reference locally
+
+### Connectivity Detection
+- `ConnectivityManager.registerNetworkCallback(NetworkRequest` with
+  `NET_CAPABILITY_INTERNET)`
+- Online/offline state exposed as `StateFlow<Boolean>` in a `NetworkMonitor` singleton
+- On AVAILABLE → trigger sync; on LOST → update UI badge
+
+### Secure Storage
+- `EncryptedSharedPreferences` (Jetpack Security Crypto) for JWT token
+- No sensitive data in plain `SharedPreferences`
+- HTTPS only; `NetworkSecurityConfig` banning cleartext traffic
+
+---
+
+## UI / UX
+
+- **Navigation**: Jetpack Navigation Compose — bottom bar: **Tasks | Notes | Money |
+  Settings**; nested NavGraphs per module; modal bottom sheets for create/edit flows
+- **Swipe gestures**: `SwipeToDismiss` / `AnchoredDraggable` for task completion
+- **Pull-to-refresh**: `PullRefreshIndicator` (Material 3) → manual sync
+- **Haptic feedback**: `HapticFeedbackConstants` on key actions
+- **Loading states**: shimmer skeleton screens, not spinners
+- **Empty states**: centred illustration + primary CTA
+- **Error states**: inline retry card with error message
+
+---
+
+## Design System (from `design.md`)
+
+### Colors
+
+| Token              | Light Mode  | Dark Mode   |
+|-------------------|-------------|-------------|
+| Background         | `#FAFAF9`   | `#141412`   |
+| Surface            | `#FFFFFF`   | `#1E1D1B`   |
+| Surface Alt        | `#F5F4F2`   | `#252422`   |
+| Border             | `#E8E6E1`   | `#2E2C28`   |
+| Text Primary       | `#1A1916`   | `#F0EDE8`   |
+| Text Secondary     | `#6B6760`   | `#9C9891`   |
+| Text Tertiary      | `#9C9891`   | `#6B6760`   |
+| Accent             | `#4A7C59`   | `#5A9B6E`   |
+| Accent Subtle      | `#EBF2ED`   | `#1A2E20`   |
+| Destructive        | `#C0392B`   | `#E74C3C`   |
+| Warning            | `#D97706`   | `#F59E0B`   |
+| Success            | `#059669`   | `#10B981`   |
+
+### Typography
+- Font: **Inter** (variable or subset bundled)
+- Scale: 12 / 14 / 16 / 18 / 20 / 24 / 28 / 32 / 40 sp
+- Line height: 1.4× body, 1.2× headings, 1.6× reading content
+- Letter spacing: −0.01 em headings, 0 em body
+
+### Spacing & Shape
+- Base unit: 4 dp — scale 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64 dp
+- Corner radii: 4 / 8 / 12 / 16 / 24 dp
+
+---
+
+## Security
+
+| Concern          | Implementation                                             |
+|-----------------|------------------------------------------------------------|
+| Token            | `EncryptedSharedPreferences`                               |
+| Network          | HTTPS enforced via `NetworkSecurityConfig`                 |
+| DB               | Unencrypted Room/SQLite in v1; SQLCipher is post-v1        |
+| Images           | App-internal storage (`MODE_PRIVATE`)                      |
+
+---
+
+## Execution Phases (pause at each for review)
+
+| Phase | Scope |
+|-------|-------|
+| **1** | Project scaffold: Kotlin/Compose skeleton, Navigation Compose, Material 3 theme (design.md tokens), Hilt DI |
+| **2** | Room schema + DAOs + local-only CRUD for the **Tasks module** (tasks, subtasks, projects, tags) |
+| **3** | Sync engine end-to-end for Tasks: NetworkMonitor, WorkManager, per-item push, per-entity pull, ID remapper, conflict resolution |
+| **4** | Notes (with offline image capture/upload) + Money Management (accounts, categories, transactions, receipts, budgets, recurring, dashboard) |
+| **5** | Sync status UI (online/offline badge, pending count, failed-item error cards) + overall UI polish |
+| **6** | Release build with R8/shrinking; measure APK/AAB size, cold-start, idle RAM; airplane-mode pass, flaky-connection pass, force-close-mid-sync pass; compare vs. RN baseline |
+
+---
+
+## Assumptions & Open Questions
+
+1. **Auth token structure**: The backend returns a single `{ token, user }` — no
+   refresh token. On 401, the user is sent to the login screen. A `remember_me: true`
+   flag on login extends token TTL to 7 days.
+
+2. **Pull strategy**: The actual mobile app does full per-entity list pulls (not the
+   batch `GET /v1/sync/pull` endpoint documented in `AGENT.md`). The Kotlin
+   implementation will mirror this. The batch sync endpoint may not exist or may be unused.
+
+3. **WorkManager minimum interval**: 15 min. Foreground "every 60 s" sync runs as a
+   coroutine loop, not WorkManager.
+
+4. **Currency**: The local DB schema defaults `currency = 'IDR'` (matching the RN app).
+   The Kotlin app will carry this same default, pending a settings preference.
+
+5. **SQLCipher**: Room is unencrypted in v1, consistent with the RN version.
+
+6. **iOS**: Android-only. iOS requires a separate Swift/SwiftUI implementation.
+
+7. **Receipt upload**: Confirmed as `POST /v1/transactions/:id/receipt` multipart —
+   no ambiguity remaining.
+
+8. **Note image access**: Requires a separate call to
+   `GET /v1/note-images/:imageId/access` → signed URL (expires in 3600 s). The Kotlin
+   implementation must cache the signed URL and refresh it before expiry.
+
+9. **`optionalString` fields in PATCH**: `transfer_account_id`, `category_id`, and
+   `description` on transactions use an optional-string pattern — explicit JSON `null`
+   clears the field; omitting the key leaves it unchanged. The Kotlin DTO/serializer
+   must handle this correctly (custom `JsonSerializer` or sealed wrapper type).

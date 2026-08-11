@@ -3,11 +3,14 @@
     <RouterLink class="muted" to="/tasks">← Tasks</RouterLink>
     <p v-if="loading" class="empty">Loading task…</p>
     <p v-else-if="error" class="notice">{{ error }}</p>
-    <template v-else-if="task"
-      ><header class="page-header">
-        <div><h1 class="page-title">Edit task</h1></div>
+    <template v-else-if="task">
+      <header class="page-header">
+        <div>
+          <h1 class="page-title">Edit task</h1>
+          <p v-if="task.status === 'completed'" class="archived-badge">Archived</p>
+        </div>
         <button class="button" @click="toggle">
-          {{ task.status === 'completed' ? 'Reopen' : 'Complete' }}
+          {{ task.status === 'completed' ? 'Unarchive Task' : 'Send to Archive' }}
         </button>
       </header>
       <TaskEditor
@@ -17,8 +20,9 @@
         @save="save"
         @delete="remove"
         @project-created="onProjectCreated"
-        @cancel="router.push('/tasks')"
-    /></template>
+        @cancel="router.push(task.status === 'completed' ? '/archive' : '/tasks')"
+      />
+    </template>
   </section>
 </template>
 <script setup lang="ts">
@@ -81,3 +85,16 @@ function onProjectCreated(project: Project) {
   }
 }
 </script>
+<style scoped>
+.archived-badge {
+  display: inline-block;
+  margin: 0.25rem 0 0 0;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #fbf5e8;
+  color: #786134;
+  border: 1px solid #e3d2ab;
+}
+</style>

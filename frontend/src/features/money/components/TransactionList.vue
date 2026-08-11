@@ -184,6 +184,7 @@ function formatIDR(valStr: string): string {
     grid-area: date;
     flex-direction: row;
     align-items: center;
+    gap: var(--space-2);
   }
   .details-col {
     grid-area: details;
@@ -193,6 +194,22 @@ function formatIDR(valStr: string): string {
   }
   .actions-col {
     grid-area: actions;
+  }
+}
+@media (max-width: 480px) {
+  .txn-row {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'details'
+      'amount'
+      'date'
+      'actions';
+  }
+  .amount-col {
+    text-align: left;
+  }
+  .actions-col {
+    justify-content: flex-start;
   }
 }
 </style>

@@ -1,0 +1,175 @@
+package com.tasker.android.ui.auth
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.tasker.android.ui.theme.TaskerTheme
+
+@Composable
+fun LoginScreen(
+    onLoginSuccess: () -> Unit,
+    viewModel: LoginViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val focusManager = LocalFocusManager.current
+    val colors = TaskerTheme.colors
+
+    // Navigate on success
+    LaunchedEffect(uiState.isLoggedIn) {
+        if (uiState.isLoggedIn) onLoginSuccess()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .padding(horizontal = 32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Logo / wordmark
+            Text(
+                text  = "Tasker",
+                style = MaterialTheme.typography.displaySmall,
+                color = colors.accent,
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // Username field
+            OutlinedTextField(
+                value         = uiState.username,
+                onValueChange = viewModel::onUsernameChange,
+                label         = { Text("Username") },
+                leadingIcon   = { Icon(Icons.Outlined.Person, null) },
+                singleLine    = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction    = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                ),
+                modifier = Modifier.fillMaxWidth(),
+                isError  = uiState.errorMessage != null,
+                colors   = taskerOutlinedTextFieldColors(),
+            )
+
+            // Password field
+            var passwordVisible by remember { mutableStateOf(false) }
+            OutlinedTextField(
+                value         = uiState.password,
+                onValueChange = viewModel::onPasswordChange,
+                label         = { Text("Password") },
+                leadingIcon   = { Icon(Icons.Outlined.Lock, null) },
+                trailingIcon  = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Outlined.Visibility
+                                          else Icons.Outlined.VisibilityOff,
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                        )
+                    }
+                },
+                visualTransformation = if (passwordVisible) VisualTransformation.None
+                                       else PasswordVisualTransformation(),
+                singleLine    = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction    = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        focusManager.clearFocus()
+                        viewModel.login()
+                    },
+                ),
+                modifier = Modifier.fillMaxWidth(),
+                isError  = uiState.errorMessage != null,
+                colors   = taskerOutlinedTextFieldColors(),
+            )
+
+            // Error message
+            uiState.errorMessage?.let { msg ->
+                Text(
+                    text  = msg,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
+            // Remember me
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Checkbox(
+                    checked  = uiState.rememberMe,
+                    onCheckedChange = viewModel::onRememberMeChange,
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = colors.accent,
+                    ),
+                )
+                Text(
+                    text  = "Stay signed in for 7 days",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                )
+            }
+
+            // Sign in button
+            Button(
+                onClick  = viewModel::login,
+                enabled  = !uiState.isLoading,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors   = ButtonDefaults.buttonColors(
+                    containerColor = colors.accent,
+                    contentColor   = MaterialTheme.colorScheme.onPrimary,
+                ),
+                shape    = MaterialTheme.shapes.medium,
+            ) {
+                if (uiState.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Text("Sign in", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun taskerOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor   = TaskerTheme.colors.accent,
+    unfocusedBorderColor = TaskerTheme.colors.border,
+    focusedLabelColor    = TaskerTheme.colors.accent,
+    unfocusedLabelColor  = TaskerTheme.colors.textTertiary,
+    cursorColor          = TaskerTheme.colors.accent,
+    focusedContainerColor   = TaskerTheme.colors.surfaceAlt,
+    unfocusedContainerColor = TaskerTheme.colors.surfaceAlt,
+)

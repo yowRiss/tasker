@@ -26,6 +26,15 @@ type Tag struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+type Subtask struct {
+	ID        string    `json:"id"`
+	TaskID    string    `json:"task_id"`
+	Title     string    `json:"title"`
+	Completed bool      `json:"completed"`
+	Position  int       `json:"position"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
 type Task struct {
 	ID          string     `json:"id"`
 	Title       string     `json:"title"`
@@ -36,6 +45,7 @@ type Task struct {
 	CompletedAt *time.Time `json:"completed_at"`
 	Priority    int16      `json:"priority"`
 	Tags        []Tag      `json:"tags"`
+	Subtasks    []Subtask  `json:"subtasks"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
@@ -105,51 +115,51 @@ type Receipt struct {
 }
 
 type Transaction struct {
-	ID                string    `json:"id"`
-	TransactionType   string    `json:"transaction_type"`
-	Amount            string    `json:"amount"`
-	TransactionDate   string    `json:"transaction_date"`
-	AccountID         string    `json:"account_id"`
-	AccountName       string    `json:"account_name"`
-	TransferAccountID *string   `json:"transfer_account_id,omitempty"`
-	TransferAccountName *string `json:"transfer_account_name,omitempty"`
-	CategoryID        *string   `json:"category_id,omitempty"`
-	CategoryName      *string   `json:"category_name,omitempty"`
-	Description       *string   `json:"description,omitempty"`
-	Receipt           *Receipt  `json:"receipt,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                  string    `json:"id"`
+	TransactionType     string    `json:"transaction_type"`
+	Amount              string    `json:"amount"`
+	TransactionDate     string    `json:"transaction_date"`
+	AccountID           string    `json:"account_id"`
+	AccountName         string    `json:"account_name"`
+	TransferAccountID   *string   `json:"transfer_account_id,omitempty"`
+	TransferAccountName *string   `json:"transfer_account_name,omitempty"`
+	CategoryID          *string   `json:"category_id,omitempty"`
+	CategoryName        *string   `json:"category_name,omitempty"`
+	Description         *string   `json:"description,omitempty"`
+	Receipt             *Receipt  `json:"receipt,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 type Budget struct {
-	ID          string    `json:"id"`
-	CategoryID  string    `json:"category_id"`
-	CategoryName string   `json:"category_name"`
-	PeriodStart string    `json:"period_start"`
-	PeriodEnd   string    `json:"period_end"`
-	AmountLimit string    `json:"amount_limit"`
-	Spent       string    `json:"spent"`
-	Remaining   string    `json:"remaining"`
-	PercentUsed string    `json:"percent_used"`
-	IsOverBudget bool     `json:"is_over_budget"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	CategoryID   string    `json:"category_id"`
+	CategoryName string    `json:"category_name"`
+	PeriodStart  string    `json:"period_start"`
+	PeriodEnd    string    `json:"period_end"`
+	AmountLimit  string    `json:"amount_limit"`
+	Spent        string    `json:"spent"`
+	Remaining    string    `json:"remaining"`
+	PercentUsed  string    `json:"percent_used"`
+	IsOverBudget bool      `json:"is_over_budget"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type RecurringTransaction struct {
-	ID              string     `json:"id"`
-	TransactionType string     `json:"transaction_type"`
-	Amount          string     `json:"amount"`
-	AccountID       string     `json:"account_id"`
-	CategoryID      string     `json:"category_id"`
-	Description     *string    `json:"description,omitempty"`
-	Cadence         string     `json:"cadence"`
-	NextDueDate     string     `json:"next_due_date"`
-	EndsOn          *string    `json:"ends_on,omitempty"`
-	IsActive        bool       `json:"is_active"`
-	LastProcessedOn *string    `json:"last_processed_on,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID              string    `json:"id"`
+	TransactionType string    `json:"transaction_type"`
+	Amount          string    `json:"amount"`
+	AccountID       string    `json:"account_id"`
+	CategoryID      string    `json:"category_id"`
+	Description     *string   `json:"description,omitempty"`
+	Cadence         string    `json:"cadence"`
+	NextDueDate     string    `json:"next_due_date"`
+	EndsOn          *string   `json:"ends_on,omitempty"`
+	IsActive        bool      `json:"is_active"`
+	LastProcessedOn *string   `json:"last_processed_on,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type CategorySpend struct {
@@ -165,9 +175,9 @@ type MoneyTrendPoint struct {
 }
 
 type MoneyDashboard struct {
-	TotalBalance string            `json:"total_balance"`
-	Income       string            `json:"income"`
-	Expense      string            `json:"expense"`
-	CategorySpend []CategorySpend  `json:"category_spend"`
-	Trend        []MoneyTrendPoint `json:"trend"`
+	TotalBalance  string            `json:"total_balance"`
+	Income        string            `json:"income"`
+	Expense       string            `json:"expense"`
+	CategorySpend []CategorySpend   `json:"category_spend"`
+	Trend         []MoneyTrendPoint `json:"trend"`
 }

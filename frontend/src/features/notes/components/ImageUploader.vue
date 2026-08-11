@@ -6,22 +6,32 @@
       accept="image/jpeg,image/png,image/webp,image/gif"
       class="sr-only"
       @change="choose"
-    /><button class="button" type="button" :disabled="uploading" @click="picker?.click()">
-      {{ uploading ? 'Uploading…' : 'Insert image' }}</button
-    ><span v-if="error" class="error">{{ error }}</span>
+    />
+    <button class="button" type="button" :disabled="uploading" @click="picker?.click()">
+      📷 {{ uploading ? 'Uploading…' : 'Upload Image' }}
+    </button>
+    <span v-if="error" class="error">{{ error }}</span>
   </div>
 </template>
+
 <script setup lang="ts">
 import { ref } from 'vue'
 import { uploadImage } from '../note.api'
+import type { NoteImage } from '../note.types'
+
 const props = defineProps<{
   noteId?: string
   prepareNote?: () => Promise<string>
 }>()
-const emit = defineEmits<{ uploaded: [token: string] }>()
-const picker = ref<HTMLInputElement | null>(null),
-  uploading = ref(false),
-  error = ref<string | null>(null)
+
+const emit = defineEmits<{
+  uploaded: [res: { image: NoteImage; token: string }]
+}>()
+
+const picker = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+const error = ref<string | null>(null)
+
 async function choose(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
@@ -38,7 +48,8 @@ async function choose(event: Event) {
   try {
     const noteId = props.noteId ?? (await props.prepareNote?.())
     if (!noteId) throw new Error('Save the note before uploading an image.')
-    emit('uploaded', (await uploadImage(noteId, file)).token)
+    const result = await uploadImage(noteId, file)
+    emit('uploaded', result)
   } catch (cause: unknown) {
     error.value = cause instanceof Error ? cause.message : 'Image upload failed. Please retry.'
   } finally {
@@ -47,6 +58,7 @@ async function choose(event: Event) {
   }
 }
 </script>
+
 <style scoped>
 .upload {
   display: flex;

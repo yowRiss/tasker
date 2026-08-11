@@ -93,11 +93,49 @@ func scanTask(row pgx.Row) (domain.Task, error) {
 }
 
 const taskFields = "id,title,description,status,completed_at,due_date::text,priority,project_id,created_at,updated_at"
+const subtaskFields = "id,task_id,title,completed,position,created_at,updated_at"
+
+type SubtaskInput struct {
+	ID        *string `json:"id"`
+	Title     string  `json:"title"`
+	Completed bool    `json:"completed"`
+	Position  int     `json:"position"`
+}
+
+func scanSubtask(row pgx.Row) (domain.Subtask, error) {
+	var x domain.Subtask
+	err := row.Scan(&x.ID, &x.TaskID, &x.Title, &x.Completed, &x.Position, &x.CreatedAt, &x.UpdatedAt)
+	return x, err
+}
+
+func (r *Repository) Subtasks(ctx context.Context, tx pgx.Tx, u, taskID string) ([]domain.Subtask, error) {
+	rows, e := tx.Query(ctx, "select "+subtaskFields+" from subtasks where task_id=$1 and user_id=$2 order by position asc, created_at asc", taskID, u)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []domain.Subtask{}
+	for rows.Next() {
+		x, e := scanSubtask(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
 
 func (r *Repository) Task(ctx context.Context, tx pgx.Tx, u, id string) (domain.Task, error) {
 	x, e := scanTask(tx.QueryRow(ctx, "select "+taskFields+" from tasks where id=$1 and user_id=$2", id, u))
 	if e == nil {
 		x.Tags, _ = r.taskTags(ctx, tx, u, id)
+		x.Subtasks, _ = r.Subtasks(ctx, tx, u, id)
+		if x.Tags == nil {
+			x.Tags = []domain.Tag{}
+		}
+		if x.Subtasks == nil {
+			x.Subtasks = []domain.Subtask{}
+		}
 	}
 	return x, e
 }
@@ -122,34 +160,81 @@ func (r *Repository) Tasks(ctx context.Context, tx pgx.Tx, u, status, project, q
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
 	out := []domain.Task{}
 	for rows.Next() {
 		x, e := scanTask(rows)
 		if e != nil {
+			rows.Close()
 			return nil, e
 		}
-		x.Tags, _ = r.taskTags(ctx, tx, u, x.ID)
 		out = append(out, x)
 	}
-	return out, rows.Err()
+	rows.Close()
+	if e := rows.Err(); e != nil {
+		return nil, e
+	}
+
+	for i := range out {
+		out[i].Tags, _ = r.taskTags(ctx, tx, u, out[i].ID)
+		out[i].Subtasks, _ = r.Subtasks(ctx, tx, u, out[i].ID)
+		if out[i].Tags == nil {
+			out[i].Tags = []domain.Tag{}
+		}
+		if out[i].Subtasks == nil {
+			out[i].Subtasks = []domain.Subtask{}
+		}
+	}
+	return out, nil
 }
-func (r *Repository) CreateTask(ctx context.Context, tx pgx.Tx, u, title string, desc, due, project *string, priority int16, tags []string) (domain.Task, error) {
+func (r *Repository) CreateTask(ctx context.Context, tx pgx.Tx, u, title string, desc, due, project *string, priority int16, tags []string, subtasks []SubtaskInput) (domain.Task, error) {
 	x, e := scanTask(tx.QueryRow(ctx, "insert into tasks(user_id,title,description,due_date,project_id,priority)values($1,$2,$3,$4::date,$5,$6)returning "+taskFields, u, title, desc, due, project, priority))
-	if e == nil {
-		e = r.setTaskTags(ctx, tx, u, x.ID, tags)
+	if e != nil {
+		return x, e
 	}
-	return x, e
+	if e = r.setTaskTags(ctx, tx, u, x.ID, tags); e != nil {
+		return x, e
+	}
+	if len(subtasks) > 0 {
+		var err error
+		x.Subtasks, err = r.SetSubtasks(ctx, tx, u, x.ID, subtasks)
+		if err != nil {
+			return x, err
+		}
+	} else {
+		x.Subtasks = []domain.Subtask{}
+	}
+	x.Tags, _ = r.taskTags(ctx, tx, u, x.ID)
+	return x, nil
 }
-func (r *Repository) UpdateTask(ctx context.Context, tx pgx.Tx, u, id string, title, desc, due, project *string, priority *int16, tags *[]string) (domain.Task, error) {
+func (r *Repository) UpdateTask(ctx context.Context, tx pgx.Tx, u, id string, title, desc, due, project *string, priority *int16, tags *[]string, subtasks *[]SubtaskInput) (domain.Task, error) {
 	x, e := scanTask(tx.QueryRow(ctx, "update tasks set title=coalesce($3,title),description=$4,due_date=$5::date,project_id=$6,priority=coalesce($7,priority) where id=$1 and user_id=$2 returning "+taskFields, id, u, title, desc, due, project, priority))
-	if e == nil && tags != nil {
-		e = r.setTaskTags(ctx, tx, u, id, *tags)
+	if e != nil {
+		return x, e
 	}
-	return x, e
+	if tags != nil {
+		if err := r.setTaskTags(ctx, tx, u, id, *tags); err != nil {
+			return x, err
+		}
+	}
+	if subtasks != nil {
+		var err error
+		x.Subtasks, err = r.SetSubtasks(ctx, tx, u, id, *subtasks)
+		if err != nil {
+			return x, err
+		}
+	} else {
+		x.Subtasks, _ = r.Subtasks(ctx, tx, u, id)
+	}
+	x.Tags, _ = r.taskTags(ctx, tx, u, id)
+	return x, nil
 }
 func (r *Repository) Completion(ctx context.Context, tx pgx.Tx, u, id string, completed bool) (domain.Task, error) {
-	return scanTask(tx.QueryRow(ctx, "update tasks set status=case when $3 then 'completed' else 'open' end,completed_at=case when $3 then now() else null end where id=$1 and user_id=$2 returning "+taskFields, id, u, completed))
+	x, e := scanTask(tx.QueryRow(ctx, "update tasks set status=case when $3 then 'completed' else 'open' end,completed_at=case when $3 then now() else null end where id=$1 and user_id=$2 returning "+taskFields, id, u, completed))
+	if e == nil {
+		x.Tags, _ = r.taskTags(ctx, tx, u, id)
+		x.Subtasks, _ = r.Subtasks(ctx, tx, u, id)
+	}
+	return x, e
 }
 func (r *Repository) DeleteTask(ctx context.Context, tx pgx.Tx, u, id string) error {
 	z, e := tx.Exec(ctx, "delete from tasks where id=$1 and user_id=$2", id, u)
@@ -160,6 +245,71 @@ func (r *Repository) DeleteTask(ctx context.Context, tx pgx.Tx, u, id string) er
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+func (r *Repository) CreateSubtask(ctx context.Context, tx pgx.Tx, u, taskID, title string, completed bool, position int) (domain.Subtask, error) {
+	return scanSubtask(tx.QueryRow(ctx, "insert into subtasks(user_id,task_id,title,completed,position) values($1,$2,$3,$4,$5) returning "+subtaskFields, u, taskID, title, completed, position))
+}
+func (r *Repository) UpdateSubtask(ctx context.Context, tx pgx.Tx, u, subtaskID string, title *string, completed *bool, position *int) (domain.Subtask, error) {
+	return scanSubtask(tx.QueryRow(ctx, "update subtasks set title=coalesce($3,title),completed=coalesce($4,completed),position=coalesce($5,position) where id=$1 and user_id=$2 returning "+subtaskFields, subtaskID, u, title, completed, position))
+}
+func (r *Repository) DeleteSubtask(ctx context.Context, tx pgx.Tx, u, subtaskID string) error {
+	z, e := tx.Exec(ctx, "delete from subtasks where id=$1 and user_id=$2", subtaskID, u)
+	if e != nil {
+		return e
+	}
+	if z.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+func (r *Repository) SetSubtasks(ctx context.Context, tx pgx.Tx, u, taskID string, inputs []SubtaskInput) ([]domain.Subtask, error) {
+	rows, err := tx.Query(ctx, "select id from subtasks where task_id=$1 and user_id=$2", taskID, u)
+	if err != nil {
+		return nil, err
+	}
+	existingIDs := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		existingIDs[id] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	keepIDs := make(map[string]bool)
+	for idx, in := range inputs {
+		pos := in.Position
+		if pos == 0 {
+			pos = idx
+		}
+		if in.ID != nil && existingIDs[*in.ID] {
+			keepIDs[*in.ID] = true
+			if _, err := tx.Exec(ctx, "update subtasks set title=$3, completed=$4, position=$5 where id=$1 and user_id=$2", *in.ID, u, in.Title, in.Completed, pos); err != nil {
+				return nil, err
+			}
+		} else {
+			var newID string
+			if err := tx.QueryRow(ctx, "insert into subtasks(user_id,task_id,title,completed,position) values($1,$2,$3,$4,$5) returning id", u, taskID, in.Title, in.Completed, pos).Scan(&newID); err != nil {
+				return nil, err
+			}
+			keepIDs[newID] = true
+		}
+	}
+
+	for id := range existingIDs {
+		if !keepIDs[id] {
+			if _, err := tx.Exec(ctx, "delete from subtasks where id=$1 and user_id=$2", id, u); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return r.Subtasks(ctx, tx, u, taskID)
 }
 func (r *Repository) taskTags(ctx context.Context, tx pgx.Tx, u, id string) ([]domain.Tag, error) {
 	rows, e := tx.Query(ctx, "select t.id,t.name,t.color,t.created_at,t.updated_at from tags t join task_tags j on j.tag_id=t.id where j.task_id=$1 and j.user_id=$2", id, u)
@@ -347,10 +497,18 @@ func (r *Repository) Accounts(ctx context.Context, tx pgx.Tx, userID string, inc
 	}
 	query += " order by a.archived_at nulls first, lower(a.name)"
 	rows, err := tx.Query(ctx, query, userID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	out := []domain.Account{}
-	for rows.Next() { x, err := scanAccount(rows); if err != nil { return nil, err }; out = append(out, x) }
+	for rows.Next() {
+		x, err := scanAccount(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
 	return out, rows.Err()
 }
 
@@ -365,19 +523,27 @@ func (r *Repository) CreateAccount(ctx context.Context, tx pgx.Tx, userID, name,
 func (r *Repository) UpdateAccount(ctx context.Context, tx pgx.Tx, userID, id string, name, kind *string, archived *bool) (domain.Account, error) {
 	if archived != nil {
 		_, err := tx.Exec(ctx, "update accounts set archived_at=case when $4 then coalesce(archived_at, now()) else null end where id=$1 and user_id=$2", id, userID, *archived)
-		if err != nil { return domain.Account{}, err }
+		if err != nil {
+			return domain.Account{}, err
+		}
 	}
 	if name != nil || kind != nil {
 		_, err := tx.Exec(ctx, "update accounts set name=coalesce($3,name), account_type=coalesce($4,account_type) where id=$1 and user_id=$2", id, userID, name, kind)
-		if err != nil { return domain.Account{}, err }
+		if err != nil {
+			return domain.Account{}, err
+		}
 	}
 	return r.Account(ctx, tx, userID, id)
 }
 
 func (r *Repository) DeleteAccount(ctx context.Context, tx pgx.Tx, userID, id string) error {
 	tag, err := tx.Exec(ctx, "delete from accounts where id=$1 and user_id=$2", id, userID)
-	if err != nil { return err }
-	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
@@ -390,14 +556,27 @@ func scanCategory(row pgx.Row) (domain.Category, error) {
 func (r *Repository) Categories(ctx context.Context, tx pgx.Tx, userID, kind string, includeArchived bool) ([]domain.Category, error) {
 	args := []any{userID}
 	query := "select id,name,category_type,icon,color,archived_at,created_at,updated_at from categories where user_id=$1"
-	if kind != "" { args = append(args, kind); query += fmt.Sprintf(" and category_type=$%d", len(args)) }
-	if !includeArchived { query += " and archived_at is null" }
+	if kind != "" {
+		args = append(args, kind)
+		query += fmt.Sprintf(" and category_type=$%d", len(args))
+	}
+	if !includeArchived {
+		query += " and archived_at is null"
+	}
 	query += " order by category_type, lower(name)"
 	rows, err := tx.Query(ctx, query, args...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	out := []domain.Category{}
-	for rows.Next() { x, err := scanCategory(rows); if err != nil { return nil, err }; out = append(out, x) }
+	for rows.Next() {
+		x, err := scanCategory(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
 	return out, rows.Err()
 }
 
@@ -412,17 +591,25 @@ func (r *Repository) CreateCategory(ctx context.Context, tx pgx.Tx, userID, name
 func (r *Repository) UpdateCategory(ctx context.Context, tx pgx.Tx, userID, id string, name, icon, color *string, archived *bool) (domain.Category, error) {
 	if archived != nil {
 		_, err := tx.Exec(ctx, "update categories set archived_at=case when $4 then coalesce(archived_at, now()) else null end where id=$1 and user_id=$2", id, userID, *archived)
-		if err != nil { return domain.Category{}, err }
+		if err != nil {
+			return domain.Category{}, err
+		}
 	}
 	_, err := tx.Exec(ctx, "update categories set name=coalesce($3,name),icon=$4,color=$5 where id=$1 and user_id=$2", id, userID, name, icon, color)
-	if err != nil { return domain.Category{}, err }
+	if err != nil {
+		return domain.Category{}, err
+	}
 	return r.Category(ctx, tx, userID, id)
 }
 
 func (r *Repository) DeleteCategory(ctx context.Context, tx pgx.Tx, userID, id string) error {
 	tag, err := tx.Exec(ctx, "delete from categories where id=$1 and user_id=$2", id, userID)
-	if err != nil { return err }
-	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
@@ -437,7 +624,7 @@ on conflict (user_id, category_type, lower(name)) do nothing`, userID)
 
 type TransactionFilter struct {
 	StartDate, EndDate, AccountID, CategoryID, TransactionType, Query, MinAmount, MaxAmount string
-	Limit int
+	Limit                                                                                   int
 }
 
 const transactionFields = `t.id,t.transaction_type,t.amount::text,t.transaction_date::text,
@@ -460,7 +647,9 @@ func scanTransaction(row pgx.Row) (domain.Transaction, error) {
 		&x.CategoryID, &x.CategoryName, &x.Description,
 		&receiptID, &receiptTxn, &receiptObject, &receiptName, &receiptMIME, &receiptSize, &receiptCreated,
 		&x.CreatedAt, &x.UpdatedAt)
-	if err != nil { return x, err }
+	if err != nil {
+		return x, err
+	}
 	if receiptID != nil {
 		x.Receipt = &domain.Receipt{ID: *receiptID, TransactionID: *receiptTxn, ObjectPath: *receiptObject, OriginalFilename: *receiptName, MIMEType: *receiptMIME, ByteSize: *receiptSize, CreatedAt: *receiptCreated}
 	}
@@ -474,22 +663,44 @@ func (r *Repository) Transaction(ctx context.Context, tx pgx.Tx, userID, id stri
 func (r *Repository) Transactions(ctx context.Context, tx pgx.Tx, userID string, f TransactionFilter) ([]domain.Transaction, error) {
 	args := []any{userID}
 	query := "select " + transactionFields + " from transactions t " + transactionJoins + " where t.user_id=$1"
-	add := func(fragment, value string) { if value != "" { args = append(args, value); query += fmt.Sprintf(" and "+fragment+" $%d", len(args)) } }
+	add := func(fragment, value string) {
+		if value != "" {
+			args = append(args, value)
+			query += fmt.Sprintf(" and "+fragment+" $%d", len(args))
+		}
+	}
 	add("t.transaction_date >=", f.StartDate)
 	add("t.transaction_date <=", f.EndDate)
 	add("t.account_id =", f.AccountID)
 	add("t.category_id =", f.CategoryID)
 	add("t.transaction_type =", f.TransactionType)
-	if f.MinAmount != "" { args = append(args, f.MinAmount); query += fmt.Sprintf(" and t.amount >= $%d::numeric", len(args)) }
-	if f.MaxAmount != "" { args = append(args, f.MaxAmount); query += fmt.Sprintf(" and t.amount <= $%d::numeric", len(args)) }
-	if f.Query != "" { args = append(args, "%"+f.Query+"%"); query += fmt.Sprintf(" and coalesce(t.description,'') ilike $%d", len(args)) }
+	if f.MinAmount != "" {
+		args = append(args, f.MinAmount)
+		query += fmt.Sprintf(" and t.amount >= $%d::numeric", len(args))
+	}
+	if f.MaxAmount != "" {
+		args = append(args, f.MaxAmount)
+		query += fmt.Sprintf(" and t.amount <= $%d::numeric", len(args))
+	}
+	if f.Query != "" {
+		args = append(args, "%"+f.Query+"%")
+		query += fmt.Sprintf(" and coalesce(t.description,'') ilike $%d", len(args))
+	}
 	args = append(args, f.Limit)
 	query += fmt.Sprintf(" order by t.transaction_date desc,t.id desc limit $%d", len(args))
 	rows, err := tx.Query(ctx, query, args...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	out := []domain.Transaction{}
-	for rows.Next() { x, err := scanTransaction(rows); if err != nil { return nil, err }; out = append(out, x) }
+	for rows.Next() {
+		x, err := scanTransaction(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
 	return out, rows.Err()
 }
 
@@ -497,36 +708,50 @@ func (r *Repository) CreateTransaction(ctx context.Context, tx pgx.Tx, userID, k
 	var id string
 	err := tx.QueryRow(ctx, `insert into transactions(user_id,transaction_type,amount,transaction_date,account_id,transfer_account_id,category_id,description)
 values($1,$2,$3::numeric,$4::date,$5,$6,$7,$8) returning id`, userID, kind, amount, date, accountID, transferAccountID, categoryID, description).Scan(&id)
-	if err != nil { return domain.Transaction{}, err }
+	if err != nil {
+		return domain.Transaction{}, err
+	}
 	return r.Transaction(ctx, tx, userID, id)
 }
 
 func (r *Repository) UpdateTransaction(ctx context.Context, tx pgx.Tx, userID, id, kind, amount, date, accountID string, transferAccountID, categoryID, description *string) (domain.Transaction, error) {
 	tag, err := tx.Exec(ctx, `update transactions set transaction_type=$3,amount=$4::numeric,transaction_date=$5::date,account_id=$6,transfer_account_id=$7,category_id=$8,description=$9
 where id=$1 and user_id=$2`, id, userID, kind, amount, date, accountID, transferAccountID, categoryID, description)
-	if err != nil { return domain.Transaction{}, err }
-	if tag.RowsAffected() == 0 { return domain.Transaction{}, pgx.ErrNoRows }
+	if err != nil {
+		return domain.Transaction{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.Transaction{}, pgx.ErrNoRows
+	}
 	return r.Transaction(ctx, tx, userID, id)
 }
 
 func (r *Repository) DeleteTransaction(ctx context.Context, tx pgx.Tx, userID, id string) error {
 	tag, err := tx.Exec(ctx, "delete from transactions where id=$1 and user_id=$2", id, userID)
-	if err != nil { return err }
-	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
 func (r *Repository) ActiveAccount(ctx context.Context, tx pgx.Tx, userID, id string) error {
 	var ok bool
 	err := tx.QueryRow(ctx, "select exists(select 1 from accounts where id=$1 and user_id=$2 and archived_at is null)", id, userID).Scan(&ok)
-	if err != nil || !ok { return pgx.ErrNoRows }
+	if err != nil || !ok {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
 func (r *Repository) ActiveCategory(ctx context.Context, tx pgx.Tx, userID, id, kind string) error {
 	var ok bool
 	err := tx.QueryRow(ctx, "select exists(select 1 from categories where id=$1 and user_id=$2 and category_type=$3 and archived_at is null)", id, userID, kind).Scan(&ok)
-	if err != nil || !ok { return pgx.ErrNoRows }
+	if err != nil || !ok {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
@@ -552,8 +777,12 @@ returning id,transaction_id,object_path,original_filename,mime_type,byte_size,cr
 
 func (r *Repository) DeleteReceipt(ctx context.Context, tx pgx.Tx, userID, id string) error {
 	tag, err := tx.Exec(ctx, "delete from transaction_receipts where id=$1 and user_id=$2", id, userID)
-	if err != nil { return err }
-	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
@@ -575,10 +804,18 @@ func scanBudget(row pgx.Row) (domain.Budget, error) {
 
 func (r *Repository) Budgets(ctx context.Context, tx pgx.Tx, userID string) ([]domain.Budget, error) {
 	rows, err := tx.Query(ctx, "select "+budgetFields+" from budgets b "+budgetJoin+" where b.user_id=$1 order by b.period_start desc, lower(c.name)", userID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	out := []domain.Budget{}
-	for rows.Next() { x, err := scanBudget(rows); if err != nil { return nil, err }; out = append(out, x) }
+	for rows.Next() {
+		x, err := scanBudget(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
 	return out, rows.Err()
 }
 
@@ -589,21 +826,31 @@ func (r *Repository) Budget(ctx context.Context, tx pgx.Tx, userID, id string) (
 func (r *Repository) CreateBudget(ctx context.Context, tx pgx.Tx, userID, categoryID, start, end, amount string) (domain.Budget, error) {
 	var id string
 	err := tx.QueryRow(ctx, "insert into budgets(user_id,category_id,period_start,period_end,amount_limit) values($1,$2,$3::date,$4::date,$5::numeric) returning id", userID, categoryID, start, end, amount).Scan(&id)
-	if err != nil { return domain.Budget{}, err }
+	if err != nil {
+		return domain.Budget{}, err
+	}
 	return r.Budget(ctx, tx, userID, id)
 }
 
 func (r *Repository) UpdateBudget(ctx context.Context, tx pgx.Tx, userID, id, categoryID, start, end, amount string) (domain.Budget, error) {
 	tag, err := tx.Exec(ctx, "update budgets set category_id=$3,period_start=$4::date,period_end=$5::date,amount_limit=$6::numeric where id=$1 and user_id=$2", id, userID, categoryID, start, end, amount)
-	if err != nil { return domain.Budget{}, err }
-	if tag.RowsAffected() == 0 { return domain.Budget{}, pgx.ErrNoRows }
+	if err != nil {
+		return domain.Budget{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.Budget{}, pgx.ErrNoRows
+	}
 	return r.Budget(ctx, tx, userID, id)
 }
 
 func (r *Repository) DeleteBudget(ctx context.Context, tx pgx.Tx, userID, id string) error {
 	tag, err := tx.Exec(ctx, "delete from budgets where id=$1 and user_id=$2", id, userID)
-	if err != nil { return err }
-	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
@@ -612,23 +859,36 @@ func scanRecurring(row pgx.Row) (domain.RecurringTransaction, error) {
 	err := row.Scan(&x.ID, &x.TransactionType, &x.Amount, &x.AccountID, &x.CategoryID, &x.Description, &x.Cadence, &x.NextDueDate, &x.EndsOn, &x.IsActive, &x.LastProcessedOn, &x.CreatedAt, &x.UpdatedAt)
 	return x, err
 }
+
 const recurringFields = "id,transaction_type,amount::text,account_id,category_id,description,cadence,next_due_date::text,ends_on::text,is_active,last_processed_on::text,created_at,updated_at"
 
 func (r *Repository) Recurring(ctx context.Context, tx pgx.Tx, userID, id string, lock bool) (domain.RecurringTransaction, error) {
 	q := "select " + recurringFields + " from recurring_transactions where user_id=$1 and id=$2"
-	if lock { q += " for update" }
+	if lock {
+		q += " for update"
+	}
 	return scanRecurring(tx.QueryRow(ctx, q, userID, id))
 }
 
 func (r *Repository) RecurringTransactions(ctx context.Context, tx pgx.Tx, userID string, dueOnly bool) ([]domain.RecurringTransaction, error) {
 	q := "select " + recurringFields + " from recurring_transactions where user_id=$1"
-	if dueOnly { q += " and is_active and next_due_date <= current_date and (ends_on is null or next_due_date <= ends_on)" }
+	if dueOnly {
+		q += " and is_active and next_due_date <= current_date and (ends_on is null or next_due_date <= ends_on)"
+	}
 	q += " order by is_active desc,next_due_date,created_at"
 	rows, err := tx.Query(ctx, q, userID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	out := []domain.RecurringTransaction{}
-	for rows.Next() { x, err := scanRecurring(rows); if err != nil { return nil, err }; out = append(out, x) }
+	for rows.Next() {
+		x, err := scanRecurring(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
 	return out, rows.Err()
 }
 
@@ -636,29 +896,43 @@ func (r *Repository) CreateRecurring(ctx context.Context, tx pgx.Tx, userID, kin
 	var id string
 	err := tx.QueryRow(ctx, `insert into recurring_transactions(user_id,transaction_type,amount,account_id,category_id,description,cadence,next_due_date,ends_on)
 values($1,$2,$3::numeric,$4,$5,$6,$7,$8::date,$9::date) returning id`, userID, kind, amount, accountID, categoryID, description, cadence, due, endsOn).Scan(&id)
-	if err != nil { return domain.RecurringTransaction{}, err }
+	if err != nil {
+		return domain.RecurringTransaction{}, err
+	}
 	return r.Recurring(ctx, tx, userID, id, false)
 }
 
 func (r *Repository) UpdateRecurring(ctx context.Context, tx pgx.Tx, userID, id, kind, amount, accountID, categoryID string, description *string, cadence, due string, endsOn *string, active bool) (domain.RecurringTransaction, error) {
 	tag, err := tx.Exec(ctx, `update recurring_transactions set transaction_type=$3,amount=$4::numeric,account_id=$5,category_id=$6,description=$7,cadence=$8,next_due_date=$9::date,ends_on=$10::date,is_active=$11
 where id=$1 and user_id=$2`, id, userID, kind, amount, accountID, categoryID, description, cadence, due, endsOn, active)
-	if err != nil { return domain.RecurringTransaction{}, err }
-	if tag.RowsAffected() == 0 { return domain.RecurringTransaction{}, pgx.ErrNoRows }
+	if err != nil {
+		return domain.RecurringTransaction{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.RecurringTransaction{}, pgx.ErrNoRows
+	}
 	return r.Recurring(ctx, tx, userID, id, false)
 }
 
 func (r *Repository) AdvanceRecurring(ctx context.Context, tx pgx.Tx, userID, id, processed, next string, active bool) error {
 	tag, err := tx.Exec(ctx, "update recurring_transactions set last_processed_on=$3::date,next_due_date=$4::date,is_active=$5 where id=$1 and user_id=$2", id, userID, processed, next, active)
-	if err != nil { return err }
-	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
 func (r *Repository) DeleteRecurring(ctx context.Context, tx pgx.Tx, userID, id string) error {
 	tag, err := tx.Exec(ctx, "delete from recurring_transactions where id=$1 and user_id=$2", id, userID)
-	if err != nil { return err }
-	if tag.RowsAffected() == 0 { return pgx.ErrNoRows }
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
@@ -669,25 +943,49 @@ func (r *Repository) Dashboard(ctx context.Context, tx pgx.Tx, userID, start, en
  union all select transfer_account_id,amount from transactions where user_id=$1 and transaction_type='transfer'
 )
 select coalesce(sum(legs.delta),0)::text from accounts a left join legs on legs.account_id=a.id where a.user_id=$1 and a.archived_at is null`, userID).Scan(&out.TotalBalance)
-	if err != nil { return out, err }
+	if err != nil {
+		return out, err
+	}
 	err = tx.QueryRow(ctx, `select coalesce(sum(amount) filter(where transaction_type='income'),0)::text,coalesce(sum(amount) filter(where transaction_type='expense'),0)::text
 from transactions where user_id=$1 and transaction_date between $2::date and $3::date`, userID, start, end).Scan(&out.Income, &out.Expense)
-	if err != nil { return out, err }
+	if err != nil {
+		return out, err
+	}
 	rows, err := tx.Query(ctx, `select c.id,c.name,coalesce(sum(t.amount),0)::text from categories c join transactions t on t.category_id=c.id and t.user_id=c.user_id
 where t.user_id=$1 and t.transaction_type='expense' and t.transaction_date between $2::date and $3::date group by c.id,c.name order by sum(t.amount) desc,lower(c.name)`, userID, start, end)
-	if err != nil { return out, err }
+	if err != nil {
+		return out, err
+	}
 	defer rows.Close()
 	out.CategorySpend = []domain.CategorySpend{}
-	for rows.Next() { var x domain.CategorySpend; if err := rows.Scan(&x.CategoryID, &x.CategoryName, &x.Amount); err != nil { return out, err }; out.CategorySpend = append(out.CategorySpend, x) }
-	if err := rows.Err(); err != nil { return out, err }
-	unit := map[string]string{"day":"day", "week":"week", "month":"month"}[groupBy]
-	if unit == "" { unit = "day" }
+	for rows.Next() {
+		var x domain.CategorySpend
+		if err := rows.Scan(&x.CategoryID, &x.CategoryName, &x.Amount); err != nil {
+			return out, err
+		}
+		out.CategorySpend = append(out.CategorySpend, x)
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	unit := map[string]string{"day": "day", "week": "week", "month": "month"}[groupBy]
+	if unit == "" {
+		unit = "day"
+	}
 	trendQ := fmt.Sprintf(`select date_trunc('%s',transaction_date)::date::text,coalesce(sum(amount) filter(where transaction_type='income'),0)::text,coalesce(sum(amount) filter(where transaction_type='expense'),0)::text
 from transactions where user_id=$1 and transaction_date between $2::date and $3::date group by 1 order by 1`, unit)
 	rows, err = tx.Query(ctx, trendQ, userID, start, end)
-	if err != nil { return out, err }
+	if err != nil {
+		return out, err
+	}
 	defer rows.Close()
 	out.Trend = []domain.MoneyTrendPoint{}
-	for rows.Next() { var x domain.MoneyTrendPoint; if err := rows.Scan(&x.Period, &x.Income, &x.Expense); err != nil { return out, err }; out.Trend = append(out.Trend, x) }
+	for rows.Next() {
+		var x domain.MoneyTrendPoint
+		if err := rows.Scan(&x.Period, &x.Income, &x.Expense); err != nil {
+			return out, err
+		}
+		out.Trend = append(out.Trend, x)
+	}
 	return out, rows.Err()
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="tasker_secure_prefs.xml" />
+    <exclude domain="database" path="tasker.db" />
+    <exclude domain="database" path="tasker.db-shm" />
+    <exclude domain="database" path="tasker.db-wal" />
+</full-backup-content>

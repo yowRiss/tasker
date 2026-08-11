@@ -32,6 +32,11 @@ paths:
     delete: { operationId: deleteTask, responses: { "204": { description: Deleted } } }
   /v1/tasks/{taskId}/completion:
     patch: { operationId: setTaskCompletion, responses: { "200": { description: Updated task } } }
+  /v1/tasks/{taskId}/subtasks:
+    post: { operationId: createSubtask, responses: { "201": { description: Created subtask } } }
+  /v1/tasks/{taskId}/subtasks/{subtaskId}:
+    patch: { operationId: updateSubtask, responses: { "200": { description: Updated subtask } } }
+    delete: { operationId: deleteSubtask, responses: { "204": { description: Deleted subtask } } }
   /v1/projects:
     get: { operationId: listProjects, responses: { "200": { description: Project page } } }
     post: { operationId: createProject, responses: { "201": { description: Created project } } }

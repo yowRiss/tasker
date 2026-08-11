@@ -7,7 +7,7 @@
       ><header class="page-header">
         <div>
           <h1 class="page-title">Edit note</h1>
-          <p v-if="note.tasks.length" class="muted">
+          <p v-if="note.tasks?.length" class="muted">
             Linked: {{ note.tasks.map((task) => task.title).join(', ') }}
           </p>
         </div>

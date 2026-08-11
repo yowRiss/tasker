@@ -100,6 +100,11 @@ function excerpt(value: string) {
 .searchbar input {
   flex: 1;
 }
+@media (max-width: 500px) {
+  .searchbar {
+    flex-direction: column;
+  }
+}
 section section {
   margin-top: 1.5rem;
 }

@@ -504,6 +504,10 @@ async function handleSkipRecurring(id: string) {
   border-bottom: 1px solid var(--border);
   margin-bottom: var(--space-5);
   overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-bottom: var(--space-1);
 }
 .tab-link {
   display: inline-flex;
@@ -516,6 +520,7 @@ async function handleSkipRecurring(id: string) {
   font-weight: 650;
   color: var(--text-muted);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .tab-link.active {
   border-bottom-color: var(--accent);
@@ -544,5 +549,14 @@ async function handleSkipRecurring(id: string) {
 .header-actions {
   display: flex;
   gap: var(--space-2);
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .header-actions {
+    width: 100%;
+  }
+  .header-actions button {
+    width: 100%;
+  }
 }
 </style>

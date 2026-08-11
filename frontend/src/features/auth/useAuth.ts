@@ -46,11 +46,11 @@ export function useAuth() {
     error,
     ready,
     isSignedIn: computed(() => !!session.value),
-    async signIn(username: string, password: string) {
+    async signIn(username: string, password: string, rememberMe: boolean = false) {
       error.value = null
       const res = await api<{ token: string; user: AuthUser }>('/v1/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, remember_me: rememberMe }),
       })
       setToken(res.token)
       session.value = { token: res.token, user: res.user }

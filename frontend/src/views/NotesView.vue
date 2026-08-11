@@ -24,12 +24,22 @@
     </p>
     <p v-else-if="loading" class="empty">Loading notes…</p>
     <ul v-else-if="notes.length" class="note-list">
-      <li v-for="note in notes" :key="note.id" class="card">
-        <RouterLink :to="`/notes/${note.id}`"
-          ><strong>{{ note.title }}</strong
-          ><small>{{ excerpt(note.content_md) }}</small
-          ><time>Updated {{ format(note.updated_at) }}</time></RouterLink
-        >
+      <li v-for="note in notes" :key="note.id" class="card note-card">
+        <div class="note-card-main">
+          <RouterLink :to="`/notes/${note.id}`" class="note-link">
+            <strong>{{ note.title }}</strong>
+            <small>{{ excerpt(note.content_md) }}</small>
+            <time>Updated {{ format(note.updated_at) }}</time>
+          </RouterLink>
+          <button
+            type="button"
+            class="button subtle danger delete-btn"
+            title="Delete note"
+            @click="handleDeleteNote(note.id)"
+          >
+            Delete
+          </button>
+        </div>
       </li>
     </ul>
     <p v-else class="card empty">No notes yet. Capture something worth keeping.</p>
@@ -98,6 +108,15 @@ function toggleCreate() {
   if (creating.value) void cancelCreate()
   else creating.value = true
 }
+async function handleDeleteNote(id: string) {
+  if (!confirm('Permanently delete this note?')) return
+  try {
+    await deleteNote(id)
+    notes.value = notes.value.filter((n) => n.id !== id)
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Unable to delete note.'
+  }
+}
 function excerpt(markdown: string) {
   return (
     markdown
@@ -129,17 +148,37 @@ function format(value: string) {
   padding: 0;
   list-style: none;
 }
-.note-list a {
+.note-card-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+}
+.note-link {
   display: grid;
   gap: 0.4rem;
-  padding: 1rem;
+  flex: 1;
   text-decoration: none;
 }
-.note-list small,
-.note-list time {
+.note-link small,
+.note-link time {
   color: var(--text-muted);
 }
-.note-list time {
+.note-link time {
   font-size: 0.75rem;
+}
+.delete-btn {
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .note-card-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .delete-btn {
+    align-self: flex-end;
+  }
 }
 </style>

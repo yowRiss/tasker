@@ -124,4 +124,12 @@ function resetFilters() {
     grid-column: span 2;
   }
 }
+@media (max-width: 520px) {
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+  .search-field {
+    grid-column: span 1;
+  }
+}
 </style>

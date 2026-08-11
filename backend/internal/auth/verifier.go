@@ -19,14 +19,19 @@ func NewVerifier(secret string) *Verifier {
 	return &Verifier{secret: []byte(secret)}
 }
 
-// Sign creates a signed JWT for the given admin.
+// Sign creates a signed JWT for the given admin with default 24h expiration.
 func (v *Verifier) Sign(adminID, username string) (string, error) {
+	return v.SignWithTTL(adminID, username, 24*time.Hour)
+}
+
+// SignWithTTL creates a signed JWT for the given admin with custom expiration duration.
+func (v *Verifier) SignWithTTL(adminID, username string, ttl time.Duration) (string, error) {
 	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":      adminID,
 		"username": username,
 		"iat":      now.Unix(),
-		"exp":      now.Add(24 * time.Hour).Unix(),
+		"exp":      now.Add(ttl).Unix(),
 	})
 	return token.SignedString(v.secret)
 }

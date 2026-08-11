@@ -1,461 +1,722 @@
-# Personal Tasks + Notes + Money — Mobile Technical Architecture & Plan (`MOBILE_AGENT.md`)
+# Tasker Android — Agent Guide (Kotlin/Jetpack Compose)
 
-## Technical Architecture Overview
-
-The mobile client is an Android application located in `/mobile` within the monorepo. It interfaces with the existing Go backend (`/v1/*`) and Supabase Postgres/Storage instance. 
-
-The architecture is built around an **Offline-First Storage Engine**: all domain reads and writes target a local SQLite database (`expo-sqlite`), while an asynchronous **Sync Engine** reconciles local mutations with the Go API using an idempotent, ordered queue processor.
-
----
-
-## Tech Stack & Framework Decision
-
-- **Framework**: React Native with **Expo Managed Workflow** (SDK 51/52+).
-  - *Justification*: Expo provides production-ready, highly optimized native modules for offline SQLite (`expo-sqlite`), secure credential storage (`expo-secure-store`), camera/gallery access (`expo-image-picker`), sandboxed filesystem management (`expo-file-system`), and network state monitoring (`@react-native-community/netinfo`). Using Expo Managed Workflow eliminates native Android Gradle/C++ setup complexity while enabling cross-platform expansion in the future. Ejecting to bare React Native is unnecessary as all required native capabilities are natively covered by Expo modules.
-- **UI Components & Styling**: React Native core components (`View`, `Text`, `Pressable`, `FlatList`) with custom TypeScript styling tokens mirroring `frontend/src/styles/tokens.css`.
-- **Navigation**: React Navigation (Native Stack + Bottom Tabs) or Expo Router.
-- **Local Database**: `expo-sqlite` (version 14+ with modern async/sync transaction support and SQLite WAL mode enabled).
-- **Secure Storage**: `expo-secure-store` for storing local-admin JWT tokens securely in Android `EncryptedSharedPreferences`.
-- **Network State**: `@react-native-community/netinfo` for real-time cellular/Wi-Fi connection detection.
+> Companion to `MOBILE_PRD.md`. Read that document first for full feature scope, data
+> model, API contract, and sync protocol. This guide covers implementation conventions,
+> module structure, library choices, and rules agents must follow when writing or
+> modifying the Kotlin codebase.
 
 ---
 
-## Folder & Workspace Structure
+## Stack
 
-The mobile project lives under `/mobile` alongside `/frontend` and `/backend`:
+| Concern              | Library / API                                    | Notes                               |
+|---------------------|--------------------------------------------------|-------------------------------------|
+| Language             | Kotlin (JVM target 17)                           |                                     |
+| UI                   | Jetpack Compose + Material 3                     | No legacy View system               |
+| Navigation           | Navigation Compose                               | Bottom nav + nested graphs          |
+| DI                   | Hilt                                             | Minimal — only what's needed        |
+| Local DB             | Room (SQLite)                                    | WAL mode; FK enforcement ON         |
+| Networking           | Retrofit 2 + OkHttp 4                           |                                     |
+| JSON                 | Kotlin Serialization (`kotlinx.serialization`)   | Not Gson/Moshi                      |
+| Image loading        | Coil 3 (Compose extension)                       | Lighter than Glide for Compose      |
+| Camera               | CameraX (`ImageCapture` use-case)                |                                     |
+| Background sync      | WorkManager                                      | Periodic + one-shot                 |
+| Coroutines           | Kotlin Coroutines + Flow                         | Flows from Room, StateFlow in VMs   |
+| Secure storage       | `EncryptedSharedPreferences` (Jetpack Security)  |                                     |
+| Connectivity         | `ConnectivityManager.NetworkCallback`            |                                     |
+| Build                | Gradle (Kotlin DSL), R8 / ProGuard enabled       |                                     |
+| Min SDK              | 29 (Android 10)                                 |                                     |
 
-```text
-tasker/
-  api/
-    openapi.yaml
-  backend/
-  frontend/
-  mobile/
-    App.tsx
-    app.json
-    package.json
-    tsconfig.json
-    src/
-      db/
-        database.ts           # SQLite connection pool & initialization
-        schema.ts             # DDL table creation scripts & indexes
-        migrations.ts         # Schema versioning & migration runner
-        repositories/         # Typed local SQLite CRUD operations
-          taskLocal.ts
-          noteLocal.ts
-          moneyLocal.ts
-          queueLocal.ts
-      sync/
-        syncEngine.ts         # Main sync controller orchestrating push & pull
-        queueProcessor.ts     # FIFO queue replay engine with error classification
-        pullSync.ts           # Delta pull sync & timestamp merge handler
-        netInfoListener.ts    # Connectivity listener & auto-trigger
-        idRemapper.ts         # Translates local temporary UUIDs to server UUIDs
-      services/
-        apiClient.ts          # Typed HTTP fetch wrapper for Go backend /v1/* API
-        authService.ts        # Secure store JWT management & login flow
-      features/
-        auth/                 # Mobile login screen & pin guard
-        tasks/                # Task list, task editor, project/tag pickers
-        notes/                # Note list, Markdown editor/preview, image capture
-        money/                # Accounts, transactions, categories, budgets, recurring
-        sync/                 # Sync status bar, queue drawer, failed item resolution UI
-      shared/
-        components/           # Reusable UI controls (Card, Badge, Button, Input, Modal)
-        hooks/                # React hooks subscribing to local SQLite updates
-        types/                # Shared TypeScript DTO contracts mapped from openapi.yaml
-        utils/                # Date formatting, currency formatters, Markdown helpers
-```
+**Library justifications:**
+- **Coil over Glide**: Coil is Kotlin-first, Coroutine-native, and has a Compose
+  extension that avoids the View-layer interop cost Glide requires in Compose contexts.
+  Smaller binary contribution for equivalent functionality.
+- **Kotlin Serialization over Gson**: No reflection at runtime; compatible with R8
+  full-mode shrinking without additional keep rules.
+- **Compose Canvas for charts**: Avoids pulling in a charting library (MPAndroidChart
+  ~1 MB, Vico ~500 KB) for the basic bar/line visuals needed on the dashboard.
 
 ---
 
-## Local Database Schema (`expo-sqlite`)
+## Project Structure
 
-The local database mirrors server domain tables and adds `is_deleted` flags for soft deletion, plus operational sync tables (`sync_queue` and `sync_metadata`).
-
-### SQLite Pragmas
-```sql
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
 ```
-
-### Table Definitions
-
-#### 1. Operational Sync Tables
-
-```sql
-CREATE TABLE IF NOT EXISTS sync_queue (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  entity_type TEXT NOT NULL,          -- 'task', 'note', 'transaction', 'account', etc.
-  entity_id TEXT NOT NULL,            -- Local UUID of the record
-  operation TEXT NOT NULL,            -- 'CREATE', 'UPDATE', 'DELETE', 'UPLOAD_IMAGE', 'UPLOAD_RECEIPT'
-  payload TEXT NOT NULL,              -- JSON serialized DTO
-  created_at TEXT NOT NULL,           -- ISO 8601 UTC timestamp
-  retry_count INTEGER DEFAULT 0,
-  last_error TEXT NULL,
-  status TEXT DEFAULT 'pending'       -- 'pending', 'processing', 'failed'
-);
-
-CREATE TABLE IF NOT EXISTS sync_metadata (
-  table_name TEXT PRIMARY KEY,
-  last_synced_at TEXT NOT NULL,
-  sync_cursor TEXT NULL
-);
-```
-
-#### 2. Tasks Module
-
-```sql
-CREATE TABLE IF NOT EXISTS projects (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  color TEXT NULL,
-  is_archived INTEGER DEFAULT 0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS tags (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  color TEXT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS tasks (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  description TEXT NULL,
-  status TEXT NOT NULL DEFAULT 'open',
-  completed_at TEXT NULL,
-  due_date TEXT NULL,
-  priority INTEGER DEFAULT 0,
-  project_id TEXT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0,
-  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS subtasks (
-  id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL,
-  title TEXT NOT NULL,
-  completed INTEGER DEFAULT 0,
-  position INTEGER DEFAULT 0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0,
-  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS task_tags (
-  task_id TEXT NOT NULL,
-  tag_id TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (task_id, tag_id),
-  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-  FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-);
-```
-
-#### 3. Notes Module
-
-```sql
-CREATE TABLE IF NOT EXISTS notes (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  content_md TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS note_tags (
-  note_id TEXT NOT NULL,
-  tag_id TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (note_id, tag_id),
-  FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
-  FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS note_task_links (
-  note_id TEXT NOT NULL,
-  task_id TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (note_id, task_id),
-  FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
-  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS note_images (
-  id TEXT PRIMARY KEY,
-  note_id TEXT NOT NULL,
-  bucket_id TEXT NOT NULL DEFAULT 'note-images',
-  object_path TEXT NULL,
-  local_uri TEXT NOT NULL,
-  original_filename TEXT NOT NULL,
-  mime_type TEXT NOT NULL,
-  byte_size INTEGER NOT NULL,
-  alt_text TEXT NULL,
-  width INTEGER NULL,
-  height INTEGER NULL,
-  created_at TEXT NOT NULL,
-  sync_status TEXT DEFAULT 'pending', -- 'pending', 'uploading', 'synced', 'failed'
-  FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
-);
-```
-
-#### 4. Money Module
-
-```sql
-CREATE TABLE IF NOT EXISTS accounts (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  account_type TEXT NOT NULL,
-  currency TEXT NOT NULL DEFAULT 'IDR',
-  archived_at TEXT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS categories (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  category_type TEXT NOT NULL,
-  icon TEXT NULL,
-  color TEXT NULL,
-  archived_at TEXT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS transactions (
-  id TEXT PRIMARY KEY,
-  transaction_type TEXT NOT NULL,
-  amount REAL NOT NULL,
-  transaction_date TEXT NOT NULL,
-  account_id TEXT NOT NULL,
-  transfer_account_id TEXT NULL,
-  category_id TEXT NULL,
-  description TEXT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0,
-  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
-  FOREIGN KEY (transfer_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
-);
-
-CREATE TABLE IF NOT EXISTS transaction_receipts (
-  id TEXT PRIMARY KEY,
-  transaction_id TEXT NOT NULL UNIQUE,
-  bucket_id TEXT NOT NULL DEFAULT 'note-images',
-  object_path TEXT NULL,
-  local_uri TEXT NOT NULL,
-  original_filename TEXT NOT NULL,
-  mime_type TEXT NOT NULL,
-  byte_size INTEGER NOT NULL,
-  width INTEGER NULL,
-  height INTEGER NULL,
-  created_at TEXT NOT NULL,
-  sync_status TEXT DEFAULT 'pending',
-  FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS budgets (
-  id TEXT PRIMARY KEY,
-  category_id TEXT NOT NULL,
-  period_start TEXT NOT NULL,
-  period_end TEXT NOT NULL,
-  amount_limit REAL NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
-);
-
-CREATE TABLE IF NOT EXISTS recurring_transactions (
-  id TEXT PRIMARY KEY,
-  transaction_type TEXT NOT NULL,
-  amount REAL NOT NULL,
-  account_id TEXT NOT NULL,
-  category_id TEXT NOT NULL,
-  description TEXT NULL,
-  cadence TEXT NOT NULL,
-  next_due_date TEXT NOT NULL,
-  ends_on TEXT NULL,
-  is_active INTEGER DEFAULT 1,
-  last_processed_on TEXT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  is_deleted INTEGER DEFAULT 0,
-  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
-);
+android/                          ← new directory at repo root (alongside mobile/)
+├── app/
+│   ├── src/main/
+│   │   ├── AndroidManifest.xml
+│   │   └── java/com/tasker/
+│   │       ├── MainActivity.kt
+│   │       ├── TaskerApp.kt            ← Application class (@HiltAndroidApp)
+│   │       │
+│   │       ├── ui/                     ← Compose screens only
+│   │       │   ├── navigation/
+│   │       │   │   ├── AppNavGraph.kt
+│   │       │   │   └── BottomNavBar.kt
+│   │       │   ├── theme/
+│   │       │   │   ├── Color.kt
+│   │       │   │   ├── Theme.kt
+│   │       │   │   └── Type.kt
+│   │       │   ├── components/         ← reusable Composables
+│   │       │   ├── tasks/
+│   │       │   │   ├── TaskListScreen.kt
+│   │       │   │   ├── TaskDetailScreen.kt
+│   │       │   │   └── CreateEditTaskSheet.kt
+│   │       │   ├── notes/
+│   │       │   ├── money/
+│   │       │   └── settings/
+│   │       │
+│   │       ├── viewmodel/
+│   │       │   ├── tasks/TaskListViewModel.kt
+│   │       │   ├── tasks/TaskDetailViewModel.kt
+│   │       │   ├── notes/...
+│   │       │   ├── money/...
+│   │       │   └── settings/SettingsViewModel.kt
+│   │       │
+│   │       ├── data/
+│   │       │   ├── repository/
+│   │       │   │   ├── TaskRepository.kt
+│   │       │   │   ├── NoteRepository.kt
+│   │       │   │   ├── MoneyRepository.kt
+│   │       │   │   └── AuthRepository.kt
+│   │       │   └── model/              ← domain model data classes (shared layer)
+│   │       │       ├── Task.kt
+│   │       │       ├── Note.kt
+│   │       │       ├── Money.kt
+│   │       │       └── Sync.kt
+│   │       │
+│   │       ├── local/                  ← Room
+│   │       │   ├── AppDatabase.kt
+│   │       │   ├── entity/             ← @Entity classes
+│   │       │   └── dao/                ← @Dao interfaces
+│   │       │
+│   │       ├── remote/                 ← Retrofit
+│   │       │   ├── ApiClient.kt        ← OkHttp + Retrofit setup
+│   │       │   ├── AuthInterceptor.kt
+│   │       │   ├── api/
+│   │       │   │   ├── TaskApi.kt
+│   │       │   │   ├── NoteApi.kt
+│   │       │   │   ├── MoneyApi.kt
+│   │       │   │   └── AuthApi.kt
+│   │       │   └── dto/                ← request/response DTOs
+│   │       │
+│   │       ├── sync/
+│   │       │   ├── NetworkMonitor.kt
+│   │       │   ├── SyncManager.kt      ← orchestrator singleton
+│   │       │   ├── QueueProcessor.kt   ← per-item push + ID remap
+│   │       │   ├── PullSync.kt         ← per-entity pull
+│   │       │   ├── IdRemapper.kt       ← atomic FK cascade remap
+│   │       │   └── SyncWorker.kt       ← WorkManager worker
+│   │       │
+│   │       └── di/
+│   │           ├── DatabaseModule.kt
+│   │           ├── NetworkModule.kt
+│   │           ├── RepositoryModule.kt
+│   │           └── SyncModule.kt
+│   │
+│   └── build.gradle.kts
+├── build.gradle.kts
+└── settings.gradle.kts
 ```
 
 ---
 
-## Sync Engine Design
+## Architecture Rules
 
-The Sync Engine operates asynchronously in two phases: **Push (Flush Queue)** and **Pull (Delta Fetch)**.
+1. **Screens never call repositories or API directly** — only through ViewModels.
+2. **ViewModels expose `StateFlow<UiState>`** — screens observe and render state.
+3. **Repositories are the single source of truth** — always read from Room; write to
+   Room first, then enqueue to `sync_queue`; never write remote-only.
+4. **All mutations enqueue to `sync_queue`** within the same Room transaction as the
+   local write. Never enqueue without a corresponding local write.
+5. **Room DAOs return `Flow<List<T>>`** for list screens so the UI recomposes
+   automatically when the DB changes.
+6. **No business logic in Composables** — UI layer only handles rendering and user
+   events; logic lives in ViewModels and repositories.
+7. **No coroutine `GlobalScope`** — use `viewModelScope` in ViewModels,
+   `applicationScope` (Hilt-provided) for sync operations that must outlive a ViewModel.
 
-```mermaid
-flowchart TD
-    A[User Performs Action] -->|Synchronous Local Commit| B[(Local SQLite DB)]
-    A -->|Enqueue Item| C[(sync_queue Table)]
-    C --> D{NetInfo Online?}
-    D -->|No| E[Wait for Reconnect]
-    D -->|Yes| F[Push Queue Processor]
-    F -->|Replay Mutation FIFO| G[Go REST API /v1/*]
-    G -->|20x Success| H[Mark Queue Item Synced & ID Remap]
-    G -->|Transient Error| I[Exponential Backoff & Retry]
-    G -->|Permanent Error| J[Mark Queue Item Failed & Notify UI]
-    H --> K[Pull Sync Delta Fetch]
-    K -->|Merge Server Changes| B
+---
+
+## Auth Flow
+
+```
+POST /v1/auth/login
+Body: { "username": "...", "password": "...", "remember_me": false }
+Response: { "token": "<jwt>", "user": { "id": "uuid", "username": "..." } }
 ```
 
-### 1. Push Phase (Queue Processor)
+1. `AuthRepository.login()` calls the API, stores `token` in `EncryptedSharedPreferences`.
+2. `AuthInterceptor` (OkHttp) reads the token and attaches `Authorization: Bearer <token>`.
+3. On 401 response: `AuthInterceptor` clears the token from storage and posts a
+   `LOGOUT` event to an `AuthEventBus` (a `SharedFlow`). `MainActivity` observes this
+   and navigates to the login screen.
+4. No automatic token refresh (backend issues single long-lived tokens).
 
-1. **Fetch Pending Items**: Select items from `sync_queue` where `status IN ('pending', 'failed')` ordered by `id ASC`.
-2. **Sequential Replay**: Replay each mutation against the target Go API endpoint:
-   - `CREATE task` -> `POST /v1/tasks`
-   - `UPDATE task` -> `PATCH /v1/tasks/{id}`
-   - `DELETE task` -> `DELETE /v1/tasks/{id}`
-   - `UPLOAD_IMAGE` -> `POST /v1/notes/{noteId}/images` (multipart/form-data)
-   - `UPLOAD_RECEIPT` -> `POST /v1/transactions/{transactionId}/receipt` (multipart/form-data)
-3. **ID Remapping Strategy**:
-   - When an offline-created entity is pushed via `POST`, the backend responds with `201 Created` containing the canonical server entity (including `server_id`).
-   - If `server_id != local_id`:
-     - The `idRemapper` runs a local SQLite transaction updating primary keys and foreign keys in dependent local tables (`tasks`, `note_images`, `transactions`, `sync_queue`).
-4. **Error Classification**:
-   - **Network / Transient Errors (Status 0, 502, 503, 504, Timeout)**:
-     - Increment `retry_count`.
-     - Calculate exponential backoff: $t_{wait} = \min(2^{\text{retry\_count}} \times 1000\text{ ms}, 60000\text{ ms})$.
-     - Pause processing loop; resume on next network status change or timer expiration.
-   - **Permanent Validation Errors (Status 400, 409, 422)**:
-     - Update queue item `status = 'failed'`, set `last_error` to the RFC 9457 problem detail.
-     - Move to next non-dependent queue item.
-     - Surface non-blocking banner in UI to allow manual correction/retry.
-   - **Authentication Errors (Status 401)**:
-     - Halt queue processing immediately.
-     - Transition global auth state to `REAUTH_REQUIRED`.
-     - Retain all queue items in SQLite.
-
-### 2. Pull Phase (Delta Sync)
-
-1. **Trigger**: Executes immediately after a successful Push phase flush or on app foreground load while online.
-2. **Fetch Server Deltas**:
-   - Issue `GET` requests to list endpoints (`/v1/tasks`, `/v1/notes`, `/v1/accounts`, `/v1/categories`, `/v1/transactions`, `/v1/budgets`, `/v1/recurring-transactions`, `/v1/projects`, `/v1/tags`).
-   - Pass cursor parameters `limit=1000` to retrieve complete active entity sets.
-3. **Timestamp Reconciliation**:
-   - For each server item:
-     - Check local record in SQLite.
-     - If local record has active `pending` mutations in `sync_queue`, **skip local overwrite** (preserve user's unpushed local edit).
-     - Otherwise, if `server.updated_at >= local.updated_at`, update local SQLite row with server state.
-4. **Update Sync Metadata**: Record `last_synced_at = NOW()` in `sync_metadata`.
-
----
-
-## Authentication & Token Security
-
-1. **Storage**: Access JWT is stored in `expo-secure-store` using Android `EncryptedSharedPreferences`.
-2. **Request Injection**: `apiClient.ts` attaches `Authorization: Bearer <jwt>` to all outgoing requests.
-3. **Expiry & 401 Handling**:
-   - If an API request returns `401 Unauthorized`:
-     - The sync queue is paused.
-     - The user is prompted to re-enter their password on a non-destructive login modal.
-     - Upon successful login, the new JWT is saved to `expo-secure-store` and the sync engine automatically resumes processing the existing queue.
-
----
-
-## UI State & Data Binding Layer
-
-To ensure instant UI rendering, React components **never fetch data from the network directly**.
-
-1. **Local Storage as Source of Truth**:
-   - Components execute read queries against local SQLite database repositories.
-2. **Reactive Local Subscription**:
-   - A lightweight event trigger (`DatabaseNotifier`) emits events whenever local SQLite tables undergo CRUD operations (either from user actions or sync engine updates).
-   - Custom React hooks (`useTasksLocal`, `useNotesLocal`, `useMoneyLocal`, `useSyncStatus`) listen to table mutation events and trigger component re-renders.
-
-```typescript
-// Example conceptual pattern for reactive local hook
-export function useTasksLocal(filters: TaskFilters) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchLocal = useCallback(async () => {
-    const data = await taskLocalRepository.getTasks(filters);
-    setTasks(data);
-    setLoading(false);
-  }, [filters]);
-
-  useEffect(() => {
-    fetchLocal();
-    const unsubscribe = DatabaseNotifier.subscribe('tasks', fetchLocal);
-    return () => unsubscribe();
-  }, [fetchLocal]);
-
-  return { tasks, loading, refresh: fetchLocal };
+```kotlin
+// AuthInterceptor skeleton
+class AuthInterceptor @Inject constructor(
+    private val tokenStore: TokenStore,
+    private val authEventBus: AuthEventBus,
+) : Interceptor {
+    override fun intercept(chain: Chain): Response {
+        val token = tokenStore.getToken()
+        val request = chain.request().newBuilder()
+            .apply { if (token != null) header("Authorization", "Bearer $token") }
+            .build()
+        val response = chain.proceed(request)
+        if (response.code == 401) {
+            tokenStore.clear()
+            authEventBus.emit(AuthEvent.LoggedOut)
+        }
+        return response
+    }
 }
 ```
 
 ---
 
-## Image Capture & Offline Upload Pipeline
+## Database (Room)
 
-1. **Image Selection**: User selects an image via `expo-image-picker` (Camera or Gallery).
-2. **Local Copy**: File is copied to `FileSystem.documentDirectory + 'images/' + uuid + '.jpg'`.
-3. **Metadata & Queue Creation**:
-   - Insert row into local `note_images` or `transaction_receipts` with `local_uri = 'file://...'` and `sync_status = 'pending'`.
-   - Insert `UPLOAD_IMAGE` / `UPLOAD_RECEIPT` into `sync_queue`.
-4. **Offline Rendering**: The note preview or transaction item renders `<Image source={{ uri: local_uri }} />` instantly.
-5. **Background Upload**:
-   - When online, `queueProcessor` reads `local_uri` via `FileSystem.uploadAsync` or `FormData` multipart POST to `/v1/notes/{noteId}/images` or `/v1/transactions/{transactionId}/receipt`.
-   - On server response (`201 Created`), store remote object path / signed access URL and mark `sync_status = 'synced'`.
-6. **Local Cache Policy**:
-   - Cached local image files are retained locally for 7 days after successful upload as a local fallback before being purged by a background cleanup job.
+### Configuration
+
+```kotlin
+@Database(
+    entities = [
+        ProjectEntity::class, TagEntity::class,
+        TaskEntity::class, SubtaskEntity::class, TaskTagEntity::class,
+        NoteEntity::class, NoteTagEntity::class, NoteTaskLinkEntity::class,
+        NoteImageEntity::class,
+        AccountEntity::class, CategoryEntity::class,
+        TransactionEntity::class, TransactionReceiptEntity::class,
+        BudgetEntity::class, RecurringTransactionEntity::class,
+        SyncQueueEntity::class, SyncMetadataEntity::class,
+    ],
+    version = 1,
+    exportSchema = true,
+)
+@TypeConverters(Converters::class)
+abstract class AppDatabase : RoomDatabase()
+```
+
+Enable WAL mode and FK enforcement in database builder:
+```kotlin
+Room.databaseBuilder(context, AppDatabase::class.java, "tasker.db")
+    .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
+    .build()
+    // FK enforcement: override fun onOpen(db: SupportSQLiteDatabase) {
+    //     db.execSQL("PRAGMA foreign_keys=ON")
+    // }
+```
+
+### Key Entity Patterns
+
+```kotlin
+@Entity(tableName = "tasks")
+data class TaskEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val description: String?,
+    val status: String,        // open | completed | archived
+    val completedAt: String?,
+    val dueDate: String?,
+    val priority: Int,         // 0–3
+    val projectId: String?,
+    val createdAt: String,
+    val updatedAt: String,
+    val isDeleted: Int = 0,    // 0 | 1
+)
+
+@Entity(
+    tableName = "task_tags",
+    primaryKeys = ["taskId", "tagId"],
+    foreignKeys = [
+        ForeignKey(entity = TaskEntity::class, parentColumns = ["id"], childColumns = ["taskId"], onDelete = CASCADE),
+        ForeignKey(entity = TagEntity::class, parentColumns = ["id"], childColumns = ["tagId"], onDelete = CASCADE),
+    ]
+)
+data class TaskTagEntity(val taskId: String, val tagId: String, val createdAt: String)
+```
+
+### DAOs
+
+Each module has one or more DAOs. Key patterns:
+
+```kotlin
+@Dao
+interface TaskDao {
+    @Query("SELECT * FROM tasks WHERE isDeleted = 0 ORDER BY dueDate ASC, priority DESC")
+    fun observeAll(): Flow<List<TaskEntity>>
+
+    @Query("SELECT * FROM tasks WHERE id = :id")
+    suspend fun getById(id: String): TaskEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(task: TaskEntity)
+
+    @Query("UPDATE tasks SET isDeleted = 1, updatedAt = :now WHERE id = :id")
+    suspend fun softDelete(id: String, now: String)
+}
+
+@Dao
+interface SyncQueueDao {
+    @Query("SELECT * FROM sync_queue WHERE status IN ('pending','failed') AND retryCount < 10 ORDER BY id ASC")
+    suspend fun getPending(): List<SyncQueueEntity>
+
+    @Insert
+    suspend fun enqueue(item: SyncQueueEntity)
+
+    @Query("DELETE FROM sync_queue WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("UPDATE sync_queue SET status = :status, lastError = :error, retryCount = retryCount + 1 WHERE id = :id")
+    suspend fun updateStatus(id: Long, status: String, error: String?)
+}
+```
 
 ---
 
-## Implementation Plan & Execution Phases
+## Networking (Retrofit)
 
-### Phase 1 — Project Scaffold
-- Initialize `/mobile` with Expo SDK, TypeScript, and React Navigation.
-- Set up design tokens matching `frontend/src/styles/tokens.css`.
-- Build core navigation shell (Bottom Tabs for Tasks, Notes, Money, Settings).
-- Implement `expo-secure-store` authentication flow and `AuthGate`.
+```kotlin
+// Retrofit API interface example
+interface TaskApi {
+    @GET("v1/tasks")
+    suspend fun listTasks(
+        @Query("status") status: String = "all",
+        @Query("limit") limit: Int = 1000,
+        @Query("project_id") projectId: String? = null,
+        @Query("q") search: String? = null,
+    ): TaskListResponse
 
-### Phase 2 — Local Database Schema & Tasks Local CRUD
-- Implement `expo-sqlite` setup, schema initialization (`schema.ts`), and database migration runner.
-- Build local repository for `tasks`, `projects`, `tags`, and `subtasks`.
-- Implement local-only CRUD and reactive hooks for Tasks view. Validate instant local UI updates offline.
+    @POST("v1/tasks")
+    suspend fun createTask(@Body body: TaskCreateRequest): TaskResponse
 
-### Phase 3 — Sync Engine Core & End-to-End Tasks Verification
-- Implement `sync_queue` repository and `idRemapper`.
-- Implement NetInfo connection listener and `queueProcessor` (Push sync).
-- Implement `pullSync` for delta fetching and timestamp merge.
-- Test end-to-end task creation offline -> go online -> verify sync with Go backend/web app.
+    @PATCH("v1/tasks/{id}")
+    suspend fun updateTask(@Path("id") id: String, @Body body: TaskUpdateRequest): TaskResponse
 
-### Phase 4 — Extend Sync to Notes & Money Management
-- Extend SQLite schema and local repositories for `notes`, `accounts`, `categories`, `transactions`, `budgets`, `recurring_transactions`.
-- Implement offline image capture (`expo-image-picker` + `expo-file-system`) and integrate image upload queue into `queueProcessor`.
-- Build UI views for Notes (Markdown editor + image embed) and Money (Accounts, Transactions, Budgets, Dashboard).
+    @DELETE("v1/tasks/{id}")
+    suspend fun deleteTask(@Path("id") id: String): Response<Unit>
 
-### Phase 5 — Sync Status & Error Resolution UI
-- Build top status bar indicator for connectivity and pending queue counts.
-- Build `SyncQueueDrawer` showing pending, processing, and failed queue items.
-- Implement manual retry and failed item correction/dismissal UI controls.
+    @PATCH("v1/tasks/{taskId}/completion")
+    suspend fun toggleCompletion(
+        @Path("taskId") taskId: String,
+        @Body body: CompletionRequest,
+    ): TaskResponse
+}
+```
 
-### Phase 6 — Verification & Reliability Hardening
-- **Airplane Mode Pass**: Perform complete CRUD operations across all modules offline, reconnect, and verify zero data loss.
-- **Flaky Network Simulation**: Simulate packet loss, high latency, and mid-sync timeouts to verify queue integrity.
-- **App Termination Hardening**: Force-close app during active queue replay to ensure transactions roll back and resume safely.
+### `optionalString` PATCH fields
+
+For transaction PATCH, fields `transfer_account_id`, `category_id`, and `description`
+use an optional-string semantic — explicit `null` clears the field; omitting the key
+leaves it unchanged. Implement with a sealed wrapper or a custom serializer:
+
+```kotlin
+// Option: use a custom JsonTransformingSerializer or encodeDefaults=false
+// and wrap nullable fields that can be explicitly-nulled in ExplicitNull<T>
+@Serializable
+data class TransactionUpdateRequest(
+    val transactionType: String? = null,
+    val amount: String? = null,
+    val transactionDate: String? = null,
+    val accountId: String? = null,
+    @Serializable(with = ExplicitNullSerializer::class)
+    val transferAccountId: ExplicitNull<String> = ExplicitNull.Absent,
+    @Serializable(with = ExplicitNullSerializer::class)
+    val categoryId: ExplicitNull<String> = ExplicitNull.Absent,
+    @Serializable(with = ExplicitNullSerializer::class)
+    val description: ExplicitNull<String> = ExplicitNull.Absent,
+)
+```
+
+### Image / File Upload
+
+```kotlin
+interface NoteApi {
+    @Multipart
+    @POST("v1/notes/{noteId}/images")
+    suspend fun uploadImage(
+        @Path("noteId") noteId: String,
+        @Part file: MultipartBody.Part,
+    ): NoteImageUploadResponse
+}
+
+// Building the MultipartBody.Part from a local file URI:
+fun uriToMultipartPart(context: Context, uri: Uri, fieldName: String = "file"): MultipartBody.Part {
+    val stream = context.contentResolver.openInputStream(uri)!!
+    val bytes = stream.readBytes()
+    stream.close()
+    val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+    val body = bytes.toRequestBody(mimeType.toMediaType())
+    return MultipartBody.Part.createFormData(fieldName, "upload.jpg", body)
+}
+```
+
+---
+
+## Sync Engine
+
+### `SyncManager` (orchestrator)
+
+- Singleton provided by Hilt (`@Singleton`)
+- Observes `NetworkMonitor.isOnline: StateFlow<Boolean>`
+- On AVAILABLE: enqueues one-shot `SyncWorker` + starts foreground coroutine loop
+- Every 60 s in foreground: calls `triggerSync()` if online and not already syncing
+- Exposes `syncState: StateFlow<SyncState>` with `isOnline`, `isSyncing`,
+  `pendingCount`, `failedCount`
+
+### `QueueProcessor`
+
+```kotlin
+suspend fun processQueue(): QueueResult {
+    val items = syncQueueDao.getPending()
+    var processed = 0; var failed = 0
+
+    for (item in items) {
+        syncQueueDao.updateStatus(item.id, "processing", null)
+        try {
+            val result = executeMutation(item)
+            if (result?.id != null && result.id != item.entityId) {
+                idRemapper.remap(item.entityType, item.entityId, result.id)
+            }
+            syncQueueDao.delete(item.id)
+            processed++
+        } catch (e: HttpException) {
+            when {
+                e.code() == 401 -> {
+                    syncQueueDao.updateStatus(item.id, "pending", e.message)
+                    authEventBus.emit(AuthEvent.LoggedOut)
+                    return QueueResult(processed, failed, PauseReason.AUTH_ERROR)
+                }
+                e.code() >= 500 -> {
+                    syncQueueDao.updateStatus(item.id, "pending", e.message)
+                    return QueueResult(processed, failed, PauseReason.TRANSIENT_ERROR)
+                }
+                else -> {
+                    syncQueueDao.updateStatus(item.id, "failed", e.message)
+                    failed++
+                }
+            }
+        } catch (e: IOException) {
+            syncQueueDao.updateStatus(item.id, "pending", e.message)
+            return QueueResult(processed, failed, PauseReason.TRANSIENT_ERROR)
+        }
+    }
+    return QueueResult(processed, failed)
+}
+```
+
+### `PullSync`
+
+Pull each entity type in parallel with `coroutineScope { launch { … } }` for
+independent entities (tags, projects, accounts, categories), then sequentially for
+dependent ones (tasks after projects+tags, transactions after accounts+categories).
+
+For each entity, check `sync_queue` for pending mutations — skip those `entity_id`
+values. Apply upsert only if server `updated_at >= local updated_at`.
+
+### `IdRemapper`
+
+```kotlin
+suspend fun remap(entityType: String, oldId: String, newId: String) {
+    if (oldId == newId) return
+    db.withTransaction {
+        when (entityType) {
+            "task" -> {
+                taskDao.remapId(oldId, newId)
+                subtaskDao.remapTaskId(oldId, newId)
+                taskTagDao.remapTaskId(oldId, newId)
+                noteTaskLinkDao.remapTaskId(oldId, newId)
+            }
+            "note" -> {
+                noteDao.remapId(oldId, newId)
+                noteTagDao.remapNoteId(oldId, newId)
+                noteTaskLinkDao.remapNoteId(oldId, newId)
+                noteImageDao.remapNoteId(oldId, newId)
+            }
+            // … project, tag, account, category, transaction, budget
+        }
+        syncQueueDao.remapEntityId(oldId, newId)
+    }
+}
+```
+
+### `SyncWorker` (WorkManager)
+
+```kotlin
+@HiltWorker
+class SyncWorker @AssistedInject constructor(
+    @Assisted context: Context,
+    @Assisted params: WorkerParameters,
+    private val syncManager: SyncManager,
+) : CoroutineWorker(context, params) {
+
+    override suspend fun doWork(): Result {
+        return try {
+            syncManager.triggerSync()
+            Result.success()
+        } catch (e: Exception) {
+            if (runAttemptCount < 3) Result.retry() else Result.failure()
+        }
+    }
+
+    companion object {
+        const val WORK_NAME_PERIODIC = "tasker_sync_periodic"
+        const val WORK_NAME_RECONNECT = "tasker_sync_reconnect"
+
+        fun periodicRequest() = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .build()
+
+        fun oneshotRequest() = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
+    }
+}
+```
+
+---
+
+## Repository Pattern
+
+Each repository wraps a Room DAO (local) + Retrofit API (remote). The ViewModel
+**only** calls the repository. Example:
+
+```kotlin
+class TaskRepository @Inject constructor(
+    private val taskDao: TaskDao,
+    private val syncQueueDao: SyncQueueDao,
+    private val taskApi: TaskApi,           // only used in PullSync, not directly by VM
+    private val db: AppDatabase,
+) {
+    fun observeTasks(filters: TaskFilters): Flow<List<Task>> =
+        taskDao.observeAll(filters).map { it.map(TaskEntity::toDomain) }
+
+    suspend fun createTask(input: CreateTaskInput): Task {
+        val entity = input.toEntity()
+        val queueItem = entity.toCreateQueueItem()
+        db.withTransaction {
+            taskDao.upsert(entity)
+            if (input.tagIds.isNotEmpty()) taskTagDao.insertAll(...)
+            if (input.subtasks.isNotEmpty()) subtaskDao.insertAll(...)
+            syncQueueDao.enqueue(queueItem)
+        }
+        return entity.toDomain()
+    }
+
+    suspend fun updateTask(id: String, input: UpdateTaskInput) { … }
+    suspend fun deleteTask(id: String) { … }
+}
+```
+
+---
+
+## API Reference (actual backend)
+
+### Auth
+```
+POST /v1/auth/login
+  body: { username, password, remember_me? }
+  → { token, user: { id, username } }
+
+PATCH /v1/auth/password
+  body: { current_password, new_password }
+  → 204
+
+GET /v1/me → { id, username }
+```
+
+### Tasks
+```
+GET  /v1/tasks?status=all|open|completed|archived&limit=1000&project_id=&q=
+POST /v1/tasks  body: { title, description?, due_date?, priority 0-3, project_id?, tag_ids?, subtasks? }
+GET  /v1/tasks/{id}
+PATCH /v1/tasks/{id}
+DELETE /v1/tasks/{id} → 204
+PATCH /v1/tasks/{id}/completion  body: { completed: bool }
+POST /v1/tasks/{id}/subtasks  body: { title, position? }
+PATCH /v1/tasks/{id}/subtasks/{subId}  body: { title?, completed?, position? }
+DELETE /v1/tasks/{id}/subtasks/{subId} → 204
+
+GET /v1/projects | POST | PATCH /v1/projects/{id} | DELETE → 204
+GET /v1/tags     | POST | PATCH /v1/tags/{id}     | DELETE → 204
+```
+
+### Notes
+```
+GET  /v1/notes?q=&limit=1000
+POST /v1/notes  body: { title, content_md }
+GET  /v1/notes/{id}
+PATCH /v1/notes/{id}  body: { title?, content_md? }
+DELETE /v1/notes/{id} → 204
+PUT    /v1/notes/{id}/tasks/{taskId} → 204  (link)
+DELETE /v1/notes/{id}/tasks/{taskId} → 204  (unlink)
+
+POST   /v1/notes/{id}/images  multipart field: file (JPEG/PNG/WebP/GIF, max 10 MiB)
+  → { image: { id, note_id, original_filename, mime_type, byte_size, alt_text?, width?, height?, created_at }, token }
+PATCH  /v1/note-images/{imageId}  body: { alt_text? }
+DELETE /v1/note-images/{imageId} → 204
+GET    /v1/note-images/{imageId}/access → { url, expires_in: 3600 }
+```
+
+### Money
+```
+GET /v1/accounts?include_archived=
+POST /v1/accounts  body: { name, account_type }
+GET/PATCH/DELETE /v1/accounts/{id}
+  patch body: { name?, account_type?, is_archived? }
+
+GET /v1/categories?type=income|expense&include_archived=
+POST /v1/categories  body: { name, category_type, icon?, color? }
+GET/PATCH/DELETE /v1/categories/{id}
+
+GET /v1/transactions?start_date=&end_date=&account_id=&category_id=&type=&q=&min_amount=&max_amount=&limit=
+POST /v1/transactions  body: { transaction_type, amount, transaction_date, account_id,
+                               transfer_account_id?, category_id?, description? }
+GET/PATCH/DELETE /v1/transactions/{id}
+  patch: optionalString fields (explicit null clears, omit = no change) for
+         transfer_account_id, category_id, description
+POST   /v1/transactions/{id}/receipt  multipart field: file → receipt object
+DELETE /v1/transaction-receipts/{receiptId} → 204
+GET    /v1/transaction-receipts/{receiptId}/access → { url, expires_in: 3600 }
+
+GET /v1/budgets
+POST /v1/budgets  body: { category_id, period_start, period_end, amount_limit }
+GET/PATCH/DELETE /v1/budgets/{id}
+  response includes: spent, remaining, percent_used, is_over_budget (computed)
+
+GET /v1/recurring-transactions
+GET /v1/recurring-transactions/due
+POST /v1/recurring-transactions  body: { transaction_type, amount, account_id, category_id,
+                                         description?, cadence, next_due_date, ends_on?, is_active }
+GET/PATCH/DELETE /v1/recurring-transactions/{id}
+POST /v1/recurring-transactions/{id}/confirm → 201 Transaction
+POST /v1/recurring-transactions/{id}/skip → 204
+
+GET /v1/money/dashboard?start_date=&end_date=&group_by=
+  → { total_balance, income, expense, category_spend[], trend[] }
+
+GET /v1/search?q=&scope=tasks|notes|all&limit=
+  → { tasks[], notes[] }
+```
+
+### Error format (RFC 7807)
+```json
+{ "type": "...", "title": "...", "status": 422, "detail": { "field": "message" } }
+```
+
+Common HTTP error codes: 400, 401, 404, 409, 413, 415, 422, 500.
+
+---
+
+## Release Build Configuration
+
+### `app/build.gradle.kts`
+```kotlin
+android {
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+    }
+}
+```
+
+### `proguard-rules.pro` must include keep rules for:
+- Kotlin Serialization: `@Serializable` annotated classes
+- Retrofit: API interfaces + response DTOs
+- Room: entity and DAO classes
+- Hilt: inject targets
+- OkHttp / Okio (usually handled by their bundled consumer rules)
+
+---
+
+## Conventions
+
+- **Column naming**: Room entities use `camelCase` field names; Room maps them to
+  `snake_case` column names via `@ColumnInfo(name = "snake_case")` annotations.
+- **Timestamps**: All stored as ISO 8601 strings (`TEXT` column). Parse with
+  `java.time.Instant.parse()` or `java.time.LocalDate.parse()`.
+- **Soft deletes**: `isDeleted = 1` — all queries must filter `WHERE isDeleted = 0`.
+- **Currency amounts**: Stored as `TEXT` (decimal string from server, e.g. `"100.00"`)
+  to avoid float precision loss. Parse with `java.math.BigDecimal`.
+- **UUIDs**: Generated client-side with `java.util.UUID.randomUUID().toString()`.
+- **No `runOnUiThread` / `Handler`**: All threading via coroutines and `Dispatchers`.
+
+---
+
+## Testing Strategy
+
+| Layer           | Tool                     | Scope                                              |
+|----------------|--------------------------|----------------------------------------------------|
+| Room DAOs       | `Room.inMemoryDatabaseBuilder` + JUnit4 | CRUD, query filters, FK cascades |
+| Repository      | JUnit + MockK            | Local read/write + queue enqueue logic              |
+| QueueProcessor  | JUnit + MockK (mock API) | Push success, 401, 5xx, ID remap                   |
+| PullSync        | JUnit + MockK            | Upsert logic, conflict resolution, skip-pending     |
+| ViewModel       | JUnit + `TestCoroutineScope` | StateFlow emissions                            |
+| UI              | Compose `createComposeRule` | Component rendering, state transitions           |
+| E2E             | (Espresso / not in v1)  |                                                     |
+
+---
+
+## Phase Checklist
+
+### Phase 1 — Scaffold
+- [ ] New `android/` directory with Gradle wrapper, Kotlin DSL build files
+- [ ] `AppDatabase` skeleton (no entities yet)
+- [ ] Navigation Compose bottom bar: Tasks / Notes / Money / Settings (placeholder screens)
+- [ ] Material 3 `Theme.kt` with full `design.md` color tokens in light + dark
+- [ ] `Type.kt` with Inter font and correct scale
+- [ ] Hilt `@HiltAndroidApp` + basic DI modules
+- [ ] `NetworkSecurityConfig` banning cleartext
+
+### Phase 2 — Tasks (local only)
+- [ ] `ProjectEntity`, `TagEntity`, `TaskEntity`, `SubtaskEntity`, `TaskTagEntity`
+- [ ] All DAOs with correct FK cascades and `Flow` query methods
+- [ ] `TaskRepository` — `createTask`, `updateTask`, `deleteTask`, `observeTasks`
+- [ ] `SyncQueueEntity` + `SyncQueueDao` — enqueue on every mutation
+- [ ] `TaskListViewModel` + `TaskListScreen` rendering from Room Flow
+- [ ] `CreateEditTaskSheet` form with project/tag pickers
+- [ ] `TaskDetailScreen`
+
+### Phase 3 — Sync engine (Tasks)
+- [ ] `NetworkMonitor` with `StateFlow<Boolean>`
+- [ ] `AuthInterceptor` + `AuthEventBus`
+- [ ] `QueueProcessor` — per-item push, ID remap, retry/fail logic
+- [ ] `PullSync.pullTasks()`, `pullProjects()`, `pullTags()`
+- [ ] `SyncManager` orchestrator with foreground 60 s loop
+- [ ] `SyncWorker` WorkManager integration (periodic + one-shot on reconnect)
+- [ ] End-to-end test: create task offline → reconnect → verify server + local consistent
+
+### Phase 4 — Notes + Money
+- [ ] Notes: entities, DAOs, repo, screens, CameraX / photo picker, image upload queue
+- [ ] Note image signed-URL fetch + caching (`GET /v1/note-images/:id/access`)
+- [ ] Money: all entities, DAOs, repos
+- [ ] `PullSync` extended for all entity types
+- [ ] `QueueProcessor` extended for all entity+operation types
+- [ ] Money dashboard with Compose Canvas chart
+
+### Phase 5 — Sync status UI + polish
+- [ ] Online/offline badge composable (injected at scaffold level)
+- [ ] Pending count badge in bottom nav
+- [ ] Failed sync error cards with retry action
+- [ ] Shimmer skeleton screens for all list views
+- [ ] Empty states + error states everywhere
+- [ ] Haptic feedback on task complete, swipe dismiss
+
+### Phase 6 — Verification & benchmarking
+- [ ] R8 + resource shrinking enabled; confirm no missing keep rules
+- [ ] Measure release APK size (target ≤ 20 MB) and AAB size (target ≤ 15 MB)
+- [ ] Android Profiler: cold-start time (target < 1.5 s P90), idle RAM (target < 80 MB)
+- [ ] Compare against RN baseline numbers
+- [ ] Airplane-mode full offline test pass
+- [ ] Flaky-connection test (toggle airplane mode mid-sync 10×)
+- [ ] Force-close mid-sync test (verify queue integrity on restart)
+- [ ] Document results

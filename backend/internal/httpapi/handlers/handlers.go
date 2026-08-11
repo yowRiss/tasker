@@ -17,6 +17,7 @@ import (
 	"tasker/backend/internal/httpapi/response"
 	"tasker/backend/internal/repository/postgres"
 	"tasker/backend/internal/service"
+	"time"
 )
 
 type Handlers struct {
@@ -28,12 +29,11 @@ type Handlers struct {
 func New(s *service.Service, r *postgres.Repository, v *auth.Verifier) *Handlers {
 	return &Handlers{service: s, repo: r, verifier: v}
 }
-func principal(r *http.Request) domain.Principal               { p, _ := middleware.Principal(r); return p }
+func principal(r *http.Request) domain.Principal { p, _ := middleware.Principal(r); return p }
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	d := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
-	d.DisallowUnknownFields()
 	if e := d.Decode(v); e != nil {
-		response.ProblemJSON(w, r, 400, "malformed_json", "Malformed JSON", nil)
+		response.ProblemJSON(w, r, 400, "malformed_json", "Malformed JSON: "+e.Error(), nil)
 		return false
 	}
 	return true
@@ -48,12 +48,18 @@ func writeErr(w http.ResponseWriter, r *http.Request, e error) {
 		return
 	}
 	var dbErr *pgconn.PgError
-	if errors.As(e, &dbErr) && (dbErr.Code == "23503" || dbErr.Code == "23505") {
-		response.ProblemJSON(w, r, 409, "conflict", "The record has dependent data or conflicts with an existing record", nil)
-		return
+	if errors.As(e, &dbErr) {
+		if dbErr.Code == "23503" || dbErr.Code == "23505" {
+			response.ProblemJSON(w, r, 409, "conflict", "The record has dependent data or conflicts with an existing record", nil)
+			return
+		}
+		if dbErr.Code == "22P02" {
+			response.ProblemJSON(w, r, 400, "invalid_uuid", "Invalid identifier or syntax format", nil)
+			return
+		}
 	}
 	slog.Error("handler error", "request_id", response.RequestID(r), "error", e)
-	response.ProblemJSON(w, r, 500, "internal_error", "Internal server error", nil)
+	response.ProblemJSON(w, r, 500, "internal_error", "Internal server error: "+e.Error(), nil)
 }
 func id(r *http.Request, n string) string { return chi.URLParam(r, n) }
 func limit(r *http.Request) int {
@@ -220,9 +226,15 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) Tasks(w http.ResponseWriter, r *http.Request) {
 	p := principal(r)
 	var x []domain.Task
+	st := r.URL.Query().Get("status")
+	if st == "archived" {
+		st = "completed"
+	} else if st == "all" {
+		st = ""
+	}
 	e := h.service.Do(r.Context(), p, func(tx pgx.Tx) error {
 		var e error
-		x, e = h.repo.Tasks(r.Context(), tx, p.UserID, r.URL.Query().Get("status"), r.URL.Query().Get("project_id"), r.URL.Query().Get("q"), limit(r))
+		x, e = h.repo.Tasks(r.Context(), tx, p.UserID, st, r.URL.Query().Get("project_id"), r.URL.Query().Get("q"), limit(r))
 		return e
 	})
 	if e != nil {
@@ -232,18 +244,47 @@ func (h *Handlers) Tasks(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, 200, map[string]any{"items": x})
 }
 
+type subtaskPayload struct {
+	ID        *string    `json:"id"`
+	TaskID    *string    `json:"task_id"`
+	Title     string     `json:"title"`
+	Completed bool       `json:"completed"`
+	Position  int        `json:"position"`
+	CreatedAt *time.Time `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
+}
+
 type taskInput struct {
-	Title       *string   `json:"title"`
-	Description *string   `json:"description"`
-	DueDate     *string   `json:"due_date"`
-	Priority    *int16    `json:"priority"`
-	ProjectID   *string   `json:"project_id"`
-	TagIDs      *[]string `json:"tag_ids"`
+	ID          *string           `json:"id"`
+	Title       *string           `json:"title"`
+	Description *string           `json:"description"`
+	DueDate     *string           `json:"due_date"`
+	Priority    *int16            `json:"priority"`
+	ProjectID   *string           `json:"project_id"`
+	Status      *string           `json:"status"`
+	CompletedAt *time.Time        `json:"completed_at"`
+	TagIDs      *[]string         `json:"tag_ids"`
+	Tags        *[]any            `json:"tags"`
+	Subtasks    *[]subtaskPayload `json:"subtasks"`
+	CreatedAt   *time.Time        `json:"created_at"`
+	UpdatedAt   *time.Time        `json:"updated_at"`
+}
+
+func cleanStrPtr(p *string) *string {
+	if p == nil || strings.TrimSpace(*p) == "" {
+		return nil
+	}
+	s := strings.TrimSpace(*p)
+	return &s
 }
 
 func (h *Handlers) CreateTask(w http.ResponseWriter, r *http.Request) {
 	var q taskInput
-	if !decode(w, r, &q) || q.Title == nil {
+	if !decode(w, r, &q) {
+		return
+	}
+	if q.Title == nil {
+		response.ProblemJSON(w, r, 422, "validation_failed", "Validation failed", map[string]string{"title": "title is required"})
 		return
 	}
 	n, e := service.Title(*q.Title, 280)
@@ -263,11 +304,26 @@ func (h *Handlers) CreateTask(w http.ResponseWriter, r *http.Request) {
 	if q.TagIDs != nil {
 		tags = *q.TagIDs
 	}
+	var subtasks []postgres.SubtaskInput
+	if q.Subtasks != nil {
+		subtasks = make([]postgres.SubtaskInput, len(*q.Subtasks))
+		for i, st := range *q.Subtasks {
+			subtasks[i] = postgres.SubtaskInput{
+				ID:        cleanStrPtr(st.ID),
+				Title:     st.Title,
+				Completed: st.Completed,
+				Position:  st.Position,
+			}
+		}
+	}
 	p := principal(r)
+	desc := cleanStrPtr(q.Description)
+	due := cleanStrPtr(q.DueDate)
+	projectID := cleanStrPtr(q.ProjectID)
 	var x domain.Task
 	e = h.service.Do(r.Context(), p, func(tx pgx.Tx) error {
 		var e error
-		x, e = h.repo.CreateTask(r.Context(), tx, p.UserID, n, q.Description, q.DueDate, q.ProjectID, prio, tags)
+		x, e = h.repo.CreateTask(r.Context(), tx, p.UserID, n, desc, due, projectID, prio, tags, subtasks)
 		return e
 	})
 	if e != nil {
@@ -307,11 +363,34 @@ func (h *Handlers) PatchTask(w http.ResponseWriter, r *http.Request) {
 		response.ProblemJSON(w, r, 422, "validation_failed", "Validation failed", map[string]string{"priority": "must be between 0 and 3"})
 		return
 	}
+	var subtasks *[]postgres.SubtaskInput
+	if q.Subtasks != nil {
+		converted := make([]postgres.SubtaskInput, len(*q.Subtasks))
+		for i, st := range *q.Subtasks {
+			converted[i] = postgres.SubtaskInput{
+				ID:        cleanStrPtr(st.ID),
+				Title:     st.Title,
+				Completed: st.Completed,
+				Position:  st.Position,
+			}
+		}
+		subtasks = &converted
+	}
+	var desc, due, projectID *string
+	if q.Description != nil {
+		desc = cleanStrPtr(q.Description)
+	}
+	if q.DueDate != nil {
+		due = cleanStrPtr(q.DueDate)
+	}
+	if q.ProjectID != nil {
+		projectID = cleanStrPtr(q.ProjectID)
+	}
 	p := principal(r)
 	var x domain.Task
 	e := h.service.Do(r.Context(), p, func(tx pgx.Tx) error {
 		var e error
-		x, e = h.repo.UpdateTask(r.Context(), tx, p.UserID, id(r, "taskId"), q.Title, q.Description, q.DueDate, q.ProjectID, q.Priority, q.TagIDs)
+		x, e = h.repo.UpdateTask(r.Context(), tx, p.UserID, id(r, "taskId"), q.Title, desc, due, projectID, q.Priority, q.TagIDs, subtasks)
 		return e
 	})
 	if e != nil {
@@ -343,6 +422,82 @@ func (h *Handlers) Completion(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	p := principal(r)
 	e := h.service.Do(r.Context(), p, func(tx pgx.Tx) error { return h.repo.DeleteTask(r.Context(), tx, p.UserID, id(r, "taskId")) })
+	if e != nil {
+		writeErr(w, r, e)
+		return
+	}
+	w.WriteHeader(204)
+}
+func (h *Handlers) CreateSubtask(w http.ResponseWriter, r *http.Request) {
+	var q struct {
+		ID        *string    `json:"id"`
+		TaskID    *string    `json:"task_id"`
+		Title     string     `json:"title"`
+		Completed bool       `json:"completed"`
+		Position  int        `json:"position"`
+		CreatedAt *time.Time `json:"created_at"`
+		UpdatedAt *time.Time `json:"updated_at"`
+	}
+	if !decode(w, r, &q) {
+		return
+	}
+	n, e := service.Title(q.Title, 280)
+	if e != nil {
+		response.ProblemJSON(w, r, 422, "validation_failed", "Validation failed", map[string]string{"title": e.Error()})
+		return
+	}
+	p := principal(r)
+	var x domain.Subtask
+	e = h.service.Do(r.Context(), p, func(tx pgx.Tx) error {
+		var e error
+		x, e = h.repo.CreateSubtask(r.Context(), tx, p.UserID, id(r, "taskId"), n, q.Completed, q.Position)
+		return e
+	})
+	if e != nil {
+		writeErr(w, r, e)
+		return
+	}
+	response.JSON(w, 201, x)
+}
+func (h *Handlers) PatchSubtask(w http.ResponseWriter, r *http.Request) {
+	var q struct {
+		ID        *string    `json:"id"`
+		TaskID    *string    `json:"task_id"`
+		Title     *string    `json:"title"`
+		Completed *bool      `json:"completed"`
+		Position  *int       `json:"position"`
+		CreatedAt *time.Time `json:"created_at"`
+		UpdatedAt *time.Time `json:"updated_at"`
+	}
+	if !decode(w, r, &q) {
+		return
+	}
+	if q.Title != nil {
+		n, e := service.Title(*q.Title, 280)
+		if e != nil {
+			response.ProblemJSON(w, r, 422, "validation_failed", "Validation failed", map[string]string{"title": e.Error()})
+			return
+		}
+		q.Title = &n
+	}
+	p := principal(r)
+	var x domain.Subtask
+	e := h.service.Do(r.Context(), p, func(tx pgx.Tx) error {
+		var e error
+		x, e = h.repo.UpdateSubtask(r.Context(), tx, p.UserID, id(r, "subtaskId"), q.Title, q.Completed, q.Position)
+		return e
+	})
+	if e != nil {
+		writeErr(w, r, e)
+		return
+	}
+	response.JSON(w, 200, x)
+}
+func (h *Handlers) DeleteSubtask(w http.ResponseWriter, r *http.Request) {
+	p := principal(r)
+	e := h.service.Do(r.Context(), p, func(tx pgx.Tx) error {
+		return h.repo.DeleteSubtask(r.Context(), tx, p.UserID, id(r, "subtaskId"))
+	})
 	if e != nil {
 		writeErr(w, r, e)
 		return
@@ -583,8 +738,10 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		RememberMe bool   `json:"remember_me"`
+		Remember   bool   `json:"rememberMe"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -598,7 +755,11 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		response.ProblemJSON(w, r, 401, "invalid_credentials", "Invalid username or password", nil)
 		return
 	}
-	token, err := h.verifier.Sign(admin.ID, admin.Username)
+	ttl := 24 * time.Hour
+	if req.RememberMe || req.Remember {
+		ttl = 7 * 24 * time.Hour
+	}
+	token, err := h.verifier.SignWithTTL(admin.ID, admin.Username, ttl)
 	if err != nil {
 		response.ProblemJSON(w, r, 500, "token_error", "Failed to generate token", nil)
 		return
