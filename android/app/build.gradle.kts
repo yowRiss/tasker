@@ -116,6 +116,7 @@ dependencies {
 
     // Security
     implementation(libs.androidx.security.crypto)
+    compileOnly(libs.error.prone.annotations)  // Tink (via security-crypto) references these in bytecode; R8 needs them
 
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
