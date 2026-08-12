@@ -374,12 +374,12 @@ private fun CategorySpendCanvasChart(
                     drawRoundRect(
                         color = colors.surfaceAlt,
                         size = Size(size.width, size.height),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6dp.toPx())
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
                     )
                     drawRoundRect(
                         color = accentColor,
                         size = Size(size.width * progress, size.height),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6dp.toPx())
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
                     )
                 }
                 Spacer(Modifier.width(8.dp))
