@@ -230,7 +230,7 @@ private fun TaskCard(
                 if (!task.description.isNull_or_blank()) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = task.description,
+                        text = task.description.orEmpty(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.textSecondary,
                         maxLines = 2,

@@ -1,5 +1,6 @@
 package com.tasker.android.ui.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -119,7 +120,7 @@ fun SettingsScreen(
                         SyncStatusBadge(syncState = syncState, onSyncClick = viewModel::triggerManualSync)
                     }
 
-                    Divider(color = colors.border.copy(alpha = 0.5f))
+                    HorizontalDivider(color = colors.border.copy(alpha = 0.5f))
 
                     Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                         Text("Connection Status", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
@@ -163,9 +164,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.destructive),
-                border = ButtonDefaults.outlinedButtonBorder.copy(
-                    brush = androidx.compose.ui.graphics.SolidColor(colors.destructive),
-                ),
+                border = BorderStroke(1.dp, colors.destructive),
             ) {
                 Text("Log out", style = MaterialTheme.typography.labelLarge)
             }
