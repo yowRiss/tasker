@@ -5,6 +5,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"net/http"
+	"strings"
 	"tasker/backend/internal/auth"
 	"tasker/backend/internal/httpapi/handlers"
 	"tasker/backend/internal/httpapi/middleware"
@@ -12,6 +13,19 @@ import (
 
 func New(h *handlers.Handlers, v *auth.Verifier, origin string, logger *slog.Logger) http.Handler {
 	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p := r.URL.Path
+			if strings.HasPrefix(p, "/api/v1/") {
+				r.URL.Path = strings.TrimPrefix(p, "/api")
+			} else if strings.HasPrefix(p, "/api/") {
+				r.URL.Path = "/v1" + strings.TrimPrefix(p, "/api")
+			} else if p == "/api/v1" {
+				r.URL.Path = "/v1"
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 	r.Use(middleware.RequestID, middleware.Logger(logger), middleware.Recovery(logger))
 	if origin != "" {
 		r.Use(middleware.CORS(origin))

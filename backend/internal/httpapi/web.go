@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"tasker/backend/internal/httpapi/response"
 	"time"
 )
 
@@ -32,8 +33,8 @@ func newSPAHandler() http.Handler {
 			return
 		}
 		// Preserve API 404s instead of returning the Vue entry point.
-		if r.URL.Path == "/v1" || strings.HasPrefix(r.URL.Path, "/v1/") {
-			http.NotFound(w, r)
+		if r.URL.Path == "/v1" || strings.HasPrefix(r.URL.Path, "/v1/") || r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			response.ProblemJSON(w, r, 404, "not_found", "API endpoint not found: "+r.URL.Path, nil)
 			return
 		}
 
