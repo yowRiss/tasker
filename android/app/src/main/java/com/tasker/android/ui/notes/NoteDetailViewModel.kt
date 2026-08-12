@@ -88,7 +88,7 @@ class NoteDetailViewModel @Inject constructor(
         }
     }
 
-    private fun saveNoteInternal(onSuccess: (String) -> Unit = {}) {
+    private fun saveNoteInternal(onSuccess: suspend (String) -> Unit = {}) {
         val state = _uiState.value
         if (state.title.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Title is required") }

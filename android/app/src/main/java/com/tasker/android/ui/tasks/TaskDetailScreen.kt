@@ -324,3 +324,11 @@ private fun filterChipColors() = FilterChipDefaults.filterChipColors(
     containerColor = TaskerTheme.colors.surfaceAlt,
     labelColor = TaskerTheme.colors.textSecondary
 )
+
+@Composable
+private fun taskerOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = TaskerTheme.colors.accent,
+    unfocusedBorderColor = TaskerTheme.colors.border,
+    focusedContainerColor = TaskerTheme.colors.surfaceAlt,
+    unfocusedContainerColor = TaskerTheme.colors.surfaceAlt,
+)

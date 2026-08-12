@@ -225,7 +225,7 @@ class NoteRepository @Inject constructor(
         val project = projectId?.let { projectDao.getById(it) }?.let {
             com.tasker.android.data.model.Project(it.id, it.name, it.color, it.isArchived, it.createdAt, it.updatedAt)
         }
-        val tags = taskTagDao.getTagsForNote(id).map { it.toDomain() }
+        val tags = taskTagDao.getTagsForTask(id).map { it.toDomain() }
         val subtasks = subtaskDao.getSubtasksForTask(id).map {
             com.tasker.android.data.model.Subtask(it.id, it.taskId, it.title, it.completed, it.position, it.createdAt, it.updatedAt)
         }
