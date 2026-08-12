@@ -55,18 +55,22 @@ class NoteRepository @Inject constructor(
 ) {
     fun observeNotes(query: String = ""): Flow<List<Note>> =
         noteDao.observeNotesFiltered(query).map { noteEntities ->
-            noteEntities.map { entity ->
+            val result = mutableListOf<Note>()
+            for (entity in noteEntities) {
                 val tags = noteTagDao.getTagsForNote(entity.id).map { it.toDomain() }
                 val tasks = noteTaskLinkDao.getTasksForNote(entity.id).map { it.toDomain() }
                 val images = noteImageDao.getImagesForNote(entity.id).map { it.toDomain() }
-                entity.toDomain(tags, tasks, images)
+                result.add(entity.toDomain(tags, tasks, images))
             }
+            result
         }
 
     suspend fun getNote(id: String): Note? {
         val entity = noteDao.getById(id) ?: return null
         val tags = noteTagDao.getTagsForNote(entity.id).map { it.toDomain() }
-        val tasks = noteTaskLinkDao.getTasksForNote(entity.id).map { it.toDomain() }
+        val taskEntities = noteTaskLinkDao.getTasksForNote(entity.id)
+        val tasks = mutableListOf<Task>()
+        for (te in taskEntities) tasks.add(te.toDomain())
         val images = noteImageDao.getImagesForNote(entity.id).map { it.toDomain() }
         return entity.toDomain(tags, tasks, images)
     }
