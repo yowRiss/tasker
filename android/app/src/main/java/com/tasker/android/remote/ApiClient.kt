@@ -1,6 +1,7 @@
 package com.tasker.android.remote
 
 import com.tasker.android.BuildConfig
+import com.tasker.android.data.local.ApiHostStore
 import com.tasker.android.data.local.TokenStore
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -36,6 +37,28 @@ class AuthInterceptor @Inject constructor(
     }
 }
 
+@Singleton
+class BaseUrlInterceptor @Inject constructor(
+    private val apiHostStore: ApiHostStore,
+) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+        val original = chain.request()
+        val currentHost = apiHostStore.getHost()
+        val newBaseUrl = okhttp3.HttpUrl.Companion.toHttpUrlOrNull(
+            if (currentHost.endsWith("/")) currentHost else "$currentHost/"
+        ) ?: return chain.proceed(original)
+
+        val newUrl = original.url.newBuilder()
+            .scheme(newBaseUrl.scheme)
+            .host(newBaseUrl.host)
+            .port(newBaseUrl.port)
+            .build()
+
+        val newRequest = original.newBuilder().url(newUrl).build()
+        return chain.proceed(newRequest)
+    }
+}
+
 /** Shared JSON configuration — lenient to handle backend variations. */
 val ApiJson = Json {
     ignoreUnknownKeys    = true
@@ -46,11 +69,16 @@ val ApiJson = Json {
 }
 
 /** Factory function — called by DI module only. */
-fun buildOkHttpClient(authInterceptor: AuthInterceptor, debug: Boolean): OkHttpClient =
+fun buildOkHttpClient(
+    authInterceptor: AuthInterceptor,
+    baseUrlInterceptor: BaseUrlInterceptor,
+    debug: Boolean,
+): OkHttpClient =
     OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
+        .addInterceptor(baseUrlInterceptor)
         .addInterceptor(authInterceptor)
         .apply {
             if (debug) addInterceptor(

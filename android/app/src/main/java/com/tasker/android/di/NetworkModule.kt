@@ -3,6 +3,7 @@ package com.tasker.android.di
 import com.tasker.android.BuildConfig
 import com.tasker.android.remote.AuthEventBus
 import com.tasker.android.remote.AuthInterceptor
+import com.tasker.android.remote.BaseUrlInterceptor
 import com.tasker.android.remote.api.AuthApi
 import com.tasker.android.remote.api.MoneyApi
 import com.tasker.android.remote.api.NoteApi
@@ -30,9 +31,11 @@ object NetworkModule {
     @Singleton
     fun provideOkHttpClient(
         authInterceptor: AuthInterceptor,
+        baseUrlInterceptor: BaseUrlInterceptor,
     ): OkHttpClient = buildOkHttpClient(
-        authInterceptor = authInterceptor,
-        debug           = BuildConfig.DEBUG,
+        authInterceptor    = authInterceptor,
+        baseUrlInterceptor = baseUrlInterceptor,
+        debug              = BuildConfig.DEBUG,
     )
 
     @Provides

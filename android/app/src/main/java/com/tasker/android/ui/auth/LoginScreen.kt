@@ -1,10 +1,16 @@
 package com.tasker.android.ui.auth
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
@@ -158,6 +164,64 @@ fun LoginScreen(
                 } else {
                     Text("Sign in", style = MaterialTheme.typography.labelLarge)
                 }
+            }
+
+            // ── Server settings (collapsible) ──
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = viewModel::onToggleServerSettings,
+                ) {
+                    Icon(
+                        Icons.Outlined.Dns,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = colors.textTertiary,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Server",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textTertiary,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        if (uiState.showServerSettings) Icons.Outlined.KeyboardArrowUp
+                        else Icons.Outlined.KeyboardArrowDown,
+                        contentDescription = if (uiState.showServerSettings) "Collapse" else "Expand",
+                        modifier = Modifier.size(16.dp),
+                        tint = colors.textTertiary,
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = uiState.showServerSettings,
+                enter = expandVertically(),
+                exit = shrinkVertically(),
+            ) {
+                OutlinedTextField(
+                    value = uiState.apiHost,
+                    onValueChange = viewModel::onApiHostChange,
+                    label = { Text("API Host URL") },
+                    leadingIcon = { Icon(Icons.Outlined.Dns, null) },
+                    placeholder = { Text("https://api.example.com") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Uri,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { focusManager.clearFocus() },
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = taskerOutlinedTextFieldColors(),
+                )
             }
         }
     }
