@@ -44,8 +44,5 @@
 # ---- javax.annotation (compile-only; used by Dagger/Hilt and various Google libs) ----
 -dontwarn javax.annotation.**
 
-# ---- CameraX internal impl classes (module-internal, not accessed by app code) ----
--dontwarn androidx.camera.core.impl.**
-
 # ---- Keep BuildConfig ----
 -keep class com.tasker.android.BuildConfig { *; }

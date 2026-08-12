@@ -126,6 +126,7 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+    implementation(libs.androidx.camera.video)
 
     // Testing
     testImplementation(libs.junit)
@@ -135,4 +136,18 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+// Align transitive dependencies for CameraX and Error Prone annotations
+configurations.all {
+    resolutionStrategy {
+        eachDependency {
+            if (requested.group == "androidx.camera") {
+                useVersion(libs.versions.cameraX.get())
+            }
+            if (requested.group == "com.google.errorprone" && requested.name == "error_prone_annotations") {
+                useVersion(libs.versions.errorProne.get())
+            }
+        }
+    }
 }
