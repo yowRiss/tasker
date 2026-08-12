@@ -100,7 +100,7 @@ coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp"
 # Security
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 
-# Error Prone annotations (compile-only; Tink references these in bytecode)
+# Error Prone annotations (required by Tink via security-crypto; must be on R8's classpath)
 error-prone-annotations = { group = "com.google.errorprone", name = "error_prone_annotations", version.ref = "errorProne" }
 
 # WorkManager

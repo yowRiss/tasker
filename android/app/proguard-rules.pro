@@ -41,9 +41,6 @@
 # ---- Coil ----
 -dontwarn coil.**
 
-# ---- Error Prone annotations (compile-only; used by Tink, not needed at runtime) ----
--dontwarn com.google.errorprone.annotations.**
-
 # ---- javax.annotation (compile-only; used by Dagger/Hilt and various Google libs) ----
 -dontwarn javax.annotation.**
 
