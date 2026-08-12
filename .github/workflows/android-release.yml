@@ -50,7 +50,7 @@ jobs:
       - name: Build Android Release & Debug APKs
         run: |
           cd android
-          ./gradlew :app:assembleRelease :app:assembleDebug --no-daemon --stacktrace
+          ./gradlew :app:assembleRelease :app:assembleDebug --no-daemon --stacktrace --info --warning-mode all
 
       - name: Prepare APK Artifacts for Release
         run: |
