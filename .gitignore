@@ -79,6 +79,7 @@ android/app/build/
 android/.gradle/
 android/.idea/
 *.keystore
+!android/app/tasker.keystore
 *.jks
 release-apks/
 

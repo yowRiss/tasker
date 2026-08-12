@@ -15,8 +15,9 @@ android {
         applicationId = "com.tasker.android"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull()
+            ?: (System.currentTimeMillis() / 1000).toInt()
+        versionName = project.findProperty("versionName")?.toString() ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -24,16 +25,26 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("API_BASE_URL") ?: "http://10.0.2.2:8080"}\"")
     }
 
+    signingConfigs {
+        create("taskerRelease") {
+            storeFile = file("tasker.keystore")
+            storePassword = "androidtasker"
+            keyAlias = "tasker"
+            keyPassword = "androidtasker"
+        }
+    }
+
     buildTypes {
         debug {
             isDebuggable = true
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            signingConfig = signingConfigs.getByName("taskerRelease")
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("taskerRelease")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
