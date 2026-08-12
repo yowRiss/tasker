@@ -787,12 +787,16 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username   string `json:"username"`
+		Email      string `json:"email"`
 		Password   string `json:"password"`
 		RememberMe bool   `json:"remember_me"`
 		Remember   bool   `json:"rememberMe"`
 	}
 	if !decode(w, r, &req) {
 		return
+	}
+	if req.Username == "" && req.Email != "" {
+		req.Username = req.Email
 	}
 	if req.Username == "" || req.Password == "" {
 		response.ProblemJSON(w, r, 400, "invalid_input", "Username and password are required", nil)
