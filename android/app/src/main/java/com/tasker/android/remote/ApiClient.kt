@@ -44,17 +44,34 @@ class BaseUrlInterceptor @Inject constructor(
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
         val original = chain.request()
-        val currentHost = apiHostStore.getHost()
-        val formattedHost = if (currentHost.endsWith("/")) currentHost else "$currentHost/"
+        val hostInput = apiHostStore.getHost().trim()
+        if (hostInput.isBlank()) return chain.proceed(original)
+
+        val normalizedHost = when {
+            hostInput.startsWith("http://", ignoreCase = true) || hostInput.startsWith("https://", ignoreCase = true) -> hostInput
+            else -> "https://$hostInput"
+        }
+        val formattedHost = if (normalizedHost.endsWith("/")) normalizedHost else "$normalizedHost/"
         val newBaseUrl = formattedHost.toHttpUrlOrNull() ?: return chain.proceed(original)
 
-        val newUrl = original.url.newBuilder()
+        val newUrlBuilder = original.url.newBuilder()
             .scheme(newBaseUrl.scheme)
             .host(newBaseUrl.host)
             .port(newBaseUrl.port)
-            .build()
 
-        val newRequest = original.newBuilder().url(newUrl).build()
+        val basePathSegments = newBaseUrl.pathSegments.filter { it.isNotEmpty() }
+        if (basePathSegments.isNotEmpty()) {
+            val originalPathSegments = original.url.pathSegments
+            newUrlBuilder.encodedPath("")
+            for (segment in basePathSegments) {
+                newUrlBuilder.addPathSegment(segment)
+            }
+            for (segment in originalPathSegments) {
+                newUrlBuilder.addPathSegment(segment)
+            }
+        }
+
+        val newRequest = original.newBuilder().url(newUrlBuilder.build()).build()
         return chain.proceed(newRequest)
     }
 }
@@ -63,7 +80,7 @@ class BaseUrlInterceptor @Inject constructor(
 val ApiJson = Json {
     ignoreUnknownKeys    = true
     isLenient            = true
-    encodeDefaults       = false
+    encodeDefaults       = true
     explicitNulls        = false
     coerceInputValues    = true
 }
@@ -91,5 +108,5 @@ fun buildRetrofit(baseUrl: String, okHttpClient: OkHttpClient): Retrofit =
     Retrofit.Builder()
         .baseUrl(baseUrl)
         .client(okHttpClient)
-        .addConverterFactory(ApiJson.asConverterFactory("application/json; charset=UTF8".toMediaType()))
+        .addConverterFactory(ApiJson.asConverterFactory("application/json".toMediaType()))
         .build()

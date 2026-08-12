@@ -29,6 +29,23 @@ class AuthRepository @Inject constructor(
         )
         tokenStore.saveToken(response.token)
         tokenStore.saveUser(response.user.id, response.user.username)
+    }.recoverCatching { error ->
+        if (error is retrofit2.HttpException) {
+            val errorJson = error.response()?.errorBody()?.string()
+            if (!errorJson.isNullOrBlank()) {
+                try {
+                    val problem = com.tasker.android.remote.ApiJson.decodeFromString<com.tasker.android.remote.dto.ProblemResponse>(errorJson)
+                    if (problem.title.isNotBlank()) {
+                        throw Exception(problem.title)
+                    }
+                } catch (e: Exception) {
+                    if (e !is retrofit2.HttpException && e.message != null && e.message != error.message) {
+                        throw e
+                    }
+                }
+            }
+        }
+        throw error
     }
 
     fun logout() {
