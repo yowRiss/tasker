@@ -9,6 +9,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -44,9 +45,8 @@ class BaseUrlInterceptor @Inject constructor(
     override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
         val original = chain.request()
         val currentHost = apiHostStore.getHost()
-        val newBaseUrl = okhttp3.HttpUrl.Companion.toHttpUrlOrNull(
-            if (currentHost.endsWith("/")) currentHost else "$currentHost/"
-        ) ?: return chain.proceed(original)
+        val formattedHost = if (currentHost.endsWith("/")) currentHost else "$currentHost/"
+        val newBaseUrl = formattedHost.toHttpUrlOrNull() ?: return chain.proceed(original)
 
         val newUrl = original.url.newBuilder()
             .scheme(newBaseUrl.scheme)
