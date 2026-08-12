@@ -20,13 +20,24 @@ import com.tasker.android.remote.dto.TransactionCreateRequest
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.asConfigFile
+// asConfigFile does not exist — asRequestBody (line below) is the correct extension
 import okhttp3.RequestBody.Companion.asRequestBody
 import retrofit2.HttpException
 import java.io.File
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+
+// ─────────────────────────────────────────────────────────────────
+//  Supporting types for processQueue() return value
+// ─────────────────────────────────────────────────────────────────
+enum class PauseReason { AUTH_ERROR, TRANSIENT_ERROR }
+
+data class QueueProcessorResult(
+    val processedCount: Int = 0,
+    val failedCount: Int = 0,
+    val pauseReason: PauseReason? = null,
+)
 
 @Singleton
 class QueueProcessor @Inject constructor(

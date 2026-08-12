@@ -3,6 +3,7 @@ package com.tasker.android.remote.api
 import com.tasker.android.remote.dto.LoginRequest
 import com.tasker.android.remote.dto.LoginResponse
 import com.tasker.android.remote.dto.MeResponse
+import kotlinx.serialization.Serializable
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.PATCH
@@ -22,6 +23,7 @@ interface AuthApi {
 
 // ── DTOs (auth-specific, defined inline for brevity) ──────────────
 
+@Serializable
 data class ChangePasswordRequest(
     val currentPassword: String,
     val newPassword: String,
