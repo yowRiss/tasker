@@ -31,9 +31,57 @@ func New(s *service.Service, r *postgres.Repository, v *auth.Verifier) *Handlers
 }
 func principal(r *http.Request) domain.Principal { p, _ := middleware.Principal(r); return p }
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	d := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
-	if e := d.Decode(v); e != nil {
-		response.ProblemJSON(w, r, 400, "malformed_json", "Malformed JSON: "+e.Error(), nil)
+	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		slog.Error("failed to read request body",
+			"request_id", response.RequestID(r),
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote_addr", r.RemoteAddr,
+			"error", err,
+		)
+		response.ProblemJSON(w, r, 400, "malformed_json", "Failed to read request body: "+err.Error(), nil)
+		return false
+	}
+
+	bodyStr := string(bodyBytes)
+
+	if len(bodyBytes) == 0 {
+		slog.Warn("empty request body received",
+			"request_id", response.RequestID(r),
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote_addr", r.RemoteAddr,
+			"content_type", r.Header.Get("Content-Type"),
+		)
+		detail := map[string]string{
+			"method":       r.Method,
+			"path":         r.URL.Path,
+			"content_type": r.Header.Get("Content-Type"),
+			"raw_body":     "[EMPTY BODY]",
+		}
+		response.ProblemJSON(w, r, 400, "malformed_json", "Malformed JSON: request body is empty (0 bytes)", detail)
+		return false
+	}
+
+	if err := json.Unmarshal(bodyBytes, v); err != nil {
+		slog.Error("json unmarshal failed",
+			"request_id", response.RequestID(r),
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote_addr", r.RemoteAddr,
+			"content_type", r.Header.Get("Content-Type"),
+			"raw_body", bodyStr,
+			"error", err,
+		)
+		detail := map[string]string{
+			"method":       r.Method,
+			"path":         r.URL.Path,
+			"content_type": r.Header.Get("Content-Type"),
+			"raw_body":     bodyStr,
+			"decode_error": err.Error(),
+		}
+		response.ProblemJSON(w, r, 400, "malformed_json", "Malformed JSON: "+err.Error(), detail)
 		return false
 	}
 	return true

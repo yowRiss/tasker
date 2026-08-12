@@ -12,7 +12,7 @@ import (
 
 func New(h *handlers.Handlers, v *auth.Verifier, origin string, logger *slog.Logger) http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID, middleware.Recovery(logger))
+	r.Use(middleware.RequestID, middleware.Logger(logger), middleware.Recovery(logger))
 	if origin != "" {
 		r.Use(middleware.CORS(origin))
 	}

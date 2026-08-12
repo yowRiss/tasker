@@ -58,6 +58,48 @@ func Recovery(logger *slog.Logger) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(b)
+	w.bytes += n
+	return n, err
+}
+
+func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sw := &statusWriter{ResponseWriter: w}
+			next.ServeHTTP(sw, r)
+			if sw.status == 0 {
+				sw.status = http.StatusOK
+			}
+			logger.Info("http_request",
+				"request_id", response.RequestID(r),
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", sw.status,
+				"bytes", sw.bytes,
+				"remote_ip", r.RemoteAddr,
+				"content_type", r.Header.Get("Content-Type"),
+			)
+		})
+	}
+}
+
 func CORS(origin string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
