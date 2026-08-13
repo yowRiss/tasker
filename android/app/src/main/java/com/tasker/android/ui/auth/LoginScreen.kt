@@ -61,7 +61,44 @@ fun LoginScreen(
                 color = colors.accent,
             )
 
-            Spacer(Modifier.height(8.dp))
+            // Auth mode toggle (Sign In / Register tabs)
+            TabRow(
+                selectedTabIndex = if (uiState.authMode == AuthMode.LOGIN) 0 else 1,
+                containerColor = colors.surfaceAlt,
+                contentColor = colors.accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+            ) {
+                Tab(
+                    selected = uiState.authMode == AuthMode.LOGIN,
+                    onClick = { viewModel.onAuthModeChange(AuthMode.LOGIN) },
+                    text = { Text("Sign In", style = MaterialTheme.typography.titleSmall) },
+                )
+                Tab(
+                    selected = uiState.authMode == AuthMode.REGISTER,
+                    onClick = { viewModel.onAuthModeChange(AuthMode.REGISTER) },
+                    text = { Text("Register", style = MaterialTheme.typography.titleSmall) },
+                )
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            // Offline registration notice banner in Register mode
+            if (uiState.authMode == AuthMode.REGISTER) {
+                Surface(
+                    color = colors.surfaceAlt,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = "Offline-first registration: Works even when API is down. Credentials are saved locally and synced when online.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                        modifier = Modifier.padding(10.dp),
+                    )
+                }
+            }
 
             // Username field
             OutlinedTextField(
@@ -103,18 +140,55 @@ fun LoginScreen(
                 singleLine    = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Password,
-                    imeAction    = ImeAction.Done,
+                    imeAction    = if (uiState.authMode == AuthMode.REGISTER) ImeAction.Next else ImeAction.Done,
                 ),
                 keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) },
                     onDone = {
                         focusManager.clearFocus()
-                        viewModel.login()
+                        viewModel.submit()
                     },
                 ),
                 modifier = Modifier.fillMaxWidth(),
                 isError  = uiState.errorMessage != null,
                 colors   = taskerOutlinedTextFieldColors(),
             )
+
+            // Confirm Password field (Register mode only)
+            if (uiState.authMode == AuthMode.REGISTER) {
+                var confirmPasswordVisible by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    value         = uiState.confirmPassword,
+                    onValueChange = viewModel::onConfirmPasswordChange,
+                    label         = { Text("Confirm Password") },
+                    leadingIcon   = { Icon(Icons.Outlined.Lock, null) },
+                    trailingIcon  = {
+                        IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                            Icon(
+                                imageVector = if (confirmPasswordVisible) Icons.Outlined.Visibility
+                                              else Icons.Outlined.VisibilityOff,
+                                contentDescription = if (confirmPasswordVisible) "Hide password" else "Show password",
+                            )
+                        }
+                    },
+                    visualTransformation = if (confirmPasswordVisible) VisualTransformation.None
+                                           else PasswordVisualTransformation(),
+                    singleLine    = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction    = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            focusManager.clearFocus()
+                            viewModel.submit()
+                        },
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    isError  = uiState.errorMessage != null,
+                    colors   = taskerOutlinedTextFieldColors(),
+                )
+            }
 
             // Error message
             uiState.errorMessage?.let { msg ->
@@ -144,9 +218,9 @@ fun LoginScreen(
                 )
             }
 
-            // Sign in button
+            // Submit button (Sign In / Register)
             Button(
-                onClick  = viewModel::login,
+                onClick  = viewModel::submit,
                 enabled  = !uiState.isLoading,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 colors   = ButtonDefaults.buttonColors(
@@ -162,8 +236,29 @@ fun LoginScreen(
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 } else {
-                    Text("Sign in", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        text = if (uiState.authMode == AuthMode.LOGIN) "Sign in" else "Register",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                 }
+            }
+
+            // Toggle mode text button link
+            TextButton(
+                onClick = {
+                    viewModel.onAuthModeChange(
+                        if (uiState.authMode == AuthMode.LOGIN) AuthMode.REGISTER else AuthMode.LOGIN
+                    )
+                },
+            ) {
+                Text(
+                    text = if (uiState.authMode == AuthMode.LOGIN)
+                        "Don't have an account? Register"
+                    else
+                        "Already have an account? Sign in",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.accent,
+                )
             }
 
             // ── Server settings (collapsible) ──

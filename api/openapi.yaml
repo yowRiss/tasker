@@ -21,6 +21,10 @@ paths:
                   status:
                     type: string
                     const: ok
+  /v1/auth/login:
+    post: { operationId: login, responses: { "200": { description: Authenticated token and user } } }
+  /v1/auth/register:
+    post: { operationId: register, responses: { "201": { description: Registered token and user } } }
   /v1/me:
     get: { operationId: getMe, responses: { "200": { description: Authenticated principal } } }
   /v1/tasks:

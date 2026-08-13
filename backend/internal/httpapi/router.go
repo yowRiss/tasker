@@ -35,6 +35,7 @@ func New(h *handlers.Handlers, v *auth.Verifier, origin string, logger *slog.Log
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 	r.Post("/v1/auth/login", h.Login)
+	r.Post("/v1/auth/register", h.Register)
 	r.Group(func(pr chi.Router) {
 		pr.Use(middleware.Authenticate(v))
 		pr.Get("/v1/me", h.Me)

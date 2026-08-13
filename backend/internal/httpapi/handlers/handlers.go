@@ -820,6 +820,42 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
+func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		RememberMe bool   `json:"remember_me"`
+		Remember   bool   `json:"rememberMe"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Username == "" || req.Password == "" {
+		response.ProblemJSON(w, r, 400, "invalid_input", "Username and password are required", nil)
+		return
+	}
+	admin, err := h.service.Register(r.Context(), req.Username, req.Password)
+	if err != nil {
+		response.ProblemJSON(w, r, 400, "registration_failed", err.Error(), nil)
+		return
+	}
+	ttl := 24 * time.Hour
+	if req.RememberMe || req.Remember {
+		ttl = 7 * 24 * time.Hour
+	}
+	token, err := h.verifier.SignWithTTL(admin.ID, admin.Username, ttl)
+	if err != nil {
+		response.ProblemJSON(w, r, 500, "token_error", "Failed to generate token", nil)
+		return
+	}
+	response.JSON(w, 201, map[string]any{
+		"token": token,
+		"user": map[string]string{
+			"id":       admin.ID,
+			"username": admin.Username,
+		},
+	})
+}
 func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		CurrentPassword string `json:"current_password"`

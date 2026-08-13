@@ -272,6 +272,13 @@ go -C backend build -o ../dist/tasker ./cmd/api
 
 Deploy `dist/tasker` with the backend environment variables and run `./tasker`; the Go application does not load a `.env` file itself, so inject them through the VPS service manager or export them before launch. No Node, Vite, Nginx, external static-files process, or static-assets path configuration is required at runtime. `frontend/.env.production` deliberately sets `VITE_API_BASE_URL=` so the compiled SPA calls the Go API on the same origin. Leave `CORS_ALLOWED_ORIGIN` unset in this deployment. This keeps the production footprint appropriate for a 2 GB VPS: only the Go process and its normal database/network connections remain resident.
 
+## Build & CI/CD Environment Rules
+
+> **IMPORTANT FOR AGENTS / AI ASSISTANTS**:
+> - **No Local Builds**: Do NOT attempt to compile full production binaries or run Android Gradle builds (`./gradlew assemble`, APK/AAB builds, etc.) on this local machine.
+> - **GitHub CI/CD**: All builds, binary packaging, and APK/AAB compilations are executed automatically in **GitHub Actions CI/CD**.
+> - **Agent Workflow**: Focus on code accuracy, unit tests, static checks (`go vet`, `npm run lint`), and documentation. Let GitHub CI handle compilation and artifact builds.
+
 ## Coding Conventions
 
 - Use TypeScript strict mode in `frontend`. Avoid `any`; use `unknown` at untrusted boundaries and narrow it. Prefer discriminated unions for mutation/loading/error states. Use `go vet`-clean idiomatic Go, explicit error wrapping with `%w`, and `context.Context` as the first parameter of request-scoped Go methods.

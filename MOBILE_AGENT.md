@@ -38,6 +38,15 @@
 
 ---
 
+## Build & CI/CD Environment Rules
+
+> **IMPORTANT FOR AGENTS / AI ASSISTANTS**:
+> - **No Local Builds**: Do NOT attempt to run Gradle builds (`./gradlew assembleDebug`, `./gradlew build`, etc.) on the local machine.
+> - **GitHub CI/CD**: Android APK/AAB compilation and build verification are performed remotely in **GitHub Actions CI**.
+> - **Agent Responsibility**: Focus on writing clean Kotlin code, verifying models/DAOs/UI logic, and updating contracts. GitHub CI handles actual build execution.
+
+---
+
 ## Project Structure
 
 ```

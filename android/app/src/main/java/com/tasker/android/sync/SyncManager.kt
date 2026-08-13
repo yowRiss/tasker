@@ -22,12 +22,15 @@ data class SyncState(
     val failedCount: Int = 0,
 )
 
+import com.tasker.android.data.repository.AuthRepository
+
 @Singleton
 class SyncManager @Inject constructor(
     private val networkMonitor: NetworkMonitor,
     private val queueProcessor: QueueProcessor,
     private val pullSync: PullSync,
     private val syncQueueDao: SyncQueueDao,
+    private val authRepository: AuthRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _isSyncing = MutableStateFlow(false)
@@ -76,6 +79,9 @@ class SyncManager @Inject constructor(
 
         _isSyncing.value = true
         try {
+            // 0. Sync pending offline registration credentials if present
+            authRepository.syncPendingCredentials()
+
             // 1. Push pending local mutations
             val result = queueProcessor.processQueue()
             if (result.pauseReason == PauseReason.AUTH_ERROR) return

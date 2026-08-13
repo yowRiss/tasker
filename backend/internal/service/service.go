@@ -166,6 +166,30 @@ func (s *Service) Login(ctx context.Context, username, password string) (domain.
 	}
 	return admin, nil
 }
+func (s *Service) Register(ctx context.Context, username, password string) (domain.Admin, error) {
+	u := strings.TrimSpace(username)
+	if u == "" {
+		return domain.Admin{}, fmt.Errorf("username is required")
+	}
+	if len(password) < 6 {
+		return domain.Admin{}, fmt.Errorf("password must be at least 6 characters")
+	}
+	existing, err := s.repo.AdminByUsername(ctx, s.pool, u)
+	if err == nil {
+		if bcrypt.CompareHashAndPassword([]byte(existing.PasswordHash), []byte(password)) == nil {
+			return existing, nil
+		}
+		return domain.Admin{}, fmt.Errorf("username already taken")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return domain.Admin{}, fmt.Errorf("failed to hash password: %w", err)
+	}
+	if err := s.repo.CreateAdmin(ctx, s.pool, u, string(hash)); err != nil {
+		return domain.Admin{}, fmt.Errorf("failed to create user: %w", err)
+	}
+	return s.repo.AdminByUsername(ctx, s.pool, u)
+}
 func (s *Service) ChangePassword(ctx context.Context, p domain.Principal, currentPassword, newPassword string) error {
 	if len(newPassword) < 6 {
 		return fmt.Errorf("password must be at least 6 characters")

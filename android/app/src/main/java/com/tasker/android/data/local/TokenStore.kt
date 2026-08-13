@@ -22,6 +22,9 @@ class TokenStore @Inject constructor(
         private const val KEY_TOKEN   = "auth_token"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USERNAME = "username"
+        private const val KEY_PENDING_REG_USERNAME = "pending_reg_username"
+        private const val KEY_PENDING_REG_PASSWORD = "pending_reg_password"
+        private const val PREFIX_LOCAL_CRED = "cred_"
     }
 
     private val prefs: SharedPreferences by lazy {
@@ -53,6 +56,44 @@ class TokenStore @Inject constructor(
     fun getUsername(): String? = prefs.getString(KEY_USERNAME, null)
 
     fun isLoggedIn(): Boolean = getToken() != null
+
+    // ── Offline local authentication & credential sync ──────────────────
+
+    fun saveLocalCredential(username: String, password: String) {
+        prefs.edit()
+            .putString("$PREFIX_LOCAL_CRED$username", password)
+            .apply()
+    }
+
+    fun verifyLocalCredential(username: String, password: String): Boolean {
+        val storedPassword = prefs.getString("$PREFIX_LOCAL_CRED$username", null)
+        return storedPassword != null && storedPassword == password
+    }
+
+    fun savePendingRegistration(username: String, password: String) {
+        prefs.edit()
+            .putString(KEY_PENDING_REG_USERNAME, username)
+            .putString(KEY_PENDING_REG_PASSWORD, password)
+            .apply()
+    }
+
+    fun getPendingRegistration(): Pair<String, String>? {
+        val u = prefs.getString(KEY_PENDING_REG_USERNAME, null)
+        val p = prefs.getString(KEY_PENDING_REG_PASSWORD, null)
+        return if (!u.isNullOrEmpty() && !p.isNullOrEmpty()) Pair(u, p) else null
+    }
+
+    fun clearPendingRegistration() {
+        prefs.edit()
+            .remove(KEY_PENDING_REG_USERNAME)
+            .remove(KEY_PENDING_REG_PASSWORD)
+            .apply()
+    }
+
+    fun isOfflineSession(): Boolean {
+        val token = getToken()
+        return token != null && token.startsWith("offline_token_")
+    }
 
     fun clear() = prefs.edit().clear().apply()
 }
