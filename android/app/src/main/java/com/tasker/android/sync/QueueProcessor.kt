@@ -146,6 +146,10 @@ class QueueProcessor @Inject constructor(
                     noteImageDao.updateSyncStatus(item.entityId, "uploaded", res.image.id)
                     res.image.id
                 }
+                "DELETE_IMAGE" -> {
+                    noteApi.deleteImage(item.entityId)
+                    null
+                }
                 else -> null
             }
             "account" -> when (item.operation) {

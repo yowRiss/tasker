@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import com.tasker.android.ui.components.ZoomableImageDialog
 import com.tasker.android.ui.theme.TaskerTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +44,8 @@ fun TransactionDetailScreen(
     val categories by viewModel.categories.collectAsState()
     val context = LocalContext.current
 
+    var showReceiptZoom by remember { mutableStateOf(false) }
+
     LaunchedEffect(uiState.isSaved) {
         if (uiState.isSaved) onBack()
     }
@@ -51,6 +54,14 @@ fun TransactionDetailScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         uri?.let { viewModel.attachReceipt(it) }
+    }
+
+    if (showReceiptZoom && uiState.receiptUri != null) {
+        ZoomableImageDialog(
+            model = uiState.receiptUri!!,
+            contentDescription = "Receipt",
+            onDismissRequest = { showReceiptZoom = false }
+        )
     }
 
     Scaffold(
@@ -171,7 +182,12 @@ fun TransactionDetailScreen(
             // Receipt Attachment
             Text("Receipt", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
             if (uiState.receiptUri != null) {
-                Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.size(120.dp)) {
+                Card(
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clickable { showReceiptZoom = true }
+                ) {
                     AsyncImage(
                         model = ImageRequest.Builder(context).data(uiState.receiptUri).build(),
                         contentDescription = "Receipt",

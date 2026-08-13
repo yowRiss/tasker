@@ -9,6 +9,15 @@
       <button class="button" type="button" @click="preview = !preview">
         {{ preview ? 'Edit Markdown' : 'Preview Note' }}
       </button>
+      <button
+        v-if="!preview"
+        class="button subtle"
+        type="button"
+        title="Insert Math Equation"
+        @click="insertMathTemplate"
+      >
+        ∑ Math
+      </button>
       <ImageUploader
         v-if="!preview"
         :note-id="currentNoteId"
@@ -24,9 +33,11 @@
       <label for="note-content">Markdown Content</label>
       <textarea
         id="note-content"
+        ref="contentTextarea"
         v-model="content"
         rows="16"
-        placeholder="Write your note in Markdown…"
+        placeholder="Write your note in Markdown… (Type '-' for auto list)"
+        @keydown.enter="handleKeydown"
       />
     </div>
 
@@ -94,7 +105,7 @@ import ImageUploader from './ImageUploader.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
 import ImageLightbox from '../../../components/ui/ImageLightbox.vue'
 import { deleteImage, imageAccess } from '../note.api'
-import { imageIds } from '../../../lib/markdown/noteImage'
+import { imageIds, insertAtCursor } from '../../../lib/markdown/noteImage'
 import type { Note, NoteImage, NoteInput } from '../note.types'
 
 interface AttachedItem {
@@ -105,6 +116,57 @@ interface AttachedItem {
 }
 
 const selectedImage = ref<{ src: string; title: string } | null>(null)
+const contentTextarea = ref<HTMLTextAreaElement | null>(null)
+
+function insertMathTemplate() {
+  const mathSnippet = '\n$$ f(x) = x^2 $$\n'
+  if (contentTextarea.value) {
+    insertAtCursor(contentTextarea.value, mathSnippet)
+  } else {
+    content.value += (content.value ? '\n' : '') + mathSnippet
+  }
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const textarea = contentTextarea.value || (e.target as HTMLTextAreaElement)
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    if (start !== end) return
+
+    const val = textarea.value
+    const lineStart = val.lastIndexOf('\n', start - 1) + 1
+    const currentLine = val.substring(lineStart, start)
+
+    const listMatch = currentLine.match(/^(\s*-\s+)(.*)/)
+    if (listMatch) {
+      e.preventDefault()
+      const indentAndDash = listMatch[1]
+      const rest = listMatch[2].trim()
+
+      if (!rest) {
+        const newText = val.substring(0, lineStart) + val.substring(start)
+        content.value = newText
+        setTimeout(() => {
+          if (contentTextarea.value) {
+            contentTextarea.value.selectionStart = contentTextarea.value.selectionEnd = lineStart
+          }
+        }, 0)
+      } else {
+        const insertion = '\n' + indentAndDash
+        const newText = val.substring(0, start) + insertion + val.substring(start)
+        content.value = newText
+        setTimeout(() => {
+          if (contentTextarea.value) {
+            contentTextarea.value.selectionStart = contentTextarea.value.selectionEnd = start + insertion.length
+          }
+        }, 0)
+      }
+    }
+  }
+}
 
 function openZoom(src: string, title: string) {
   selectedImage.value = { src, title }

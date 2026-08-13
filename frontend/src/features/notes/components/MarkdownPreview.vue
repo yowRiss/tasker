@@ -65,4 +65,53 @@ function handleClick(e: MouseEvent) {
   border-left: 3px solid var(--border);
   color: var(--text-muted);
 }
+.markdown :deep(.math-list-item) {
+  margin-left: 1.25rem;
+  list-style-type: disc;
+  padding-left: 0.25rem;
+}
+.markdown :deep(.math-block) {
+  display: block;
+  text-align: center;
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: 'Cambria Math', 'STIX Two Math', 'Computer Modern', 'Times New Roman', serif;
+  font-size: 1.15rem;
+  overflow-x: auto;
+}
+.markdown :deep(.math-inline) {
+  font-family: 'Cambria Math', 'STIX Two Math', 'Computer Modern', 'Times New Roman', serif;
+  padding: 0 0.2rem;
+  font-size: 1.05rem;
+  background: var(--surface-muted);
+  border-radius: 4px;
+}
+.markdown :deep(.math-frac) {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  text-align: center;
+  padding: 0 0.2em;
+}
+.markdown :deep(.math-num) {
+  border-bottom: 1px solid currentColor;
+  padding: 0 0.1em;
+  font-size: 0.9em;
+}
+.markdown :deep(.math-den) {
+  padding: 0 0.1em;
+  font-size: 0.9em;
+}
+.markdown :deep(.math-sqrt-symbol) {
+  font-size: 1.1em;
+  margin-right: 1px;
+}
+.markdown :deep(.math-sqrt-body) {
+  border-top: 1px solid currentColor;
+  padding-top: 1px;
+  display: inline-block;
+}
 </style>

@@ -56,7 +56,41 @@ class NoteDetailViewModel @Inject constructor(
     }
 
     fun onTitleChange(value: String) = _uiState.update { it.copy(title = value, errorMessage = null) }
-    fun onContentChange(value: String) = _uiState.update { it.copy(contentMd = value) }
+    fun onContentChange(value: String) {
+        val oldText = _uiState.value.contentMd
+        val updated = processAutoList(oldText, value)
+        _uiState.update { it.copy(contentMd = updated) }
+    }
+
+    private fun processAutoList(oldText: String, newText: String): String {
+        if (newText.length == oldText.length + 1 && newText.endsWith("\n")) {
+            val lines = oldText.split("\n")
+            val lastLine = lines.lastOrNull() ?: ""
+
+            val bulletMatch = Regex("^(\\s*-\\s+)(.*)$").find(lastLine)
+            if (bulletMatch != null) {
+                val indentAndDash = bulletMatch.groupValues[1]
+                val rest = bulletMatch.groupValues[2].trim()
+
+                if (rest.isEmpty()) {
+                    val prefixLines = lines.dropLast(1)
+                    return if (prefixLines.isNotEmpty()) prefixLines.joinToString("\n") + "\n" else ""
+                } else {
+                    return "$newText$indentAndDash"
+                }
+            }
+        }
+        return newText
+    }
+
+    fun insertMathTemplate() {
+        _uiState.update { state ->
+            val snippet = "\n$$ f(x) = x^2 $$\n"
+            val newContent = if (state.contentMd.isBlank()) snippet.trim() else "${state.contentMd}$snippet"
+            state.copy(contentMd = newContent)
+        }
+    }
+
     fun togglePreviewMode() = _uiState.update { it.copy(isPreviewMode = !it.isPreviewMode) }
 
     fun attachImage(uri: Uri) {
@@ -97,6 +131,29 @@ class NoteDetailViewModel @Inject constructor(
                 state.copy(
                     images = state.images + attached,
                     contentMd = updatedMd
+                )
+            }
+        }
+    }
+
+    fun deleteImage(imageId: String) {
+        viewModelScope.launch {
+            noteRepository.deleteNoteImage(imageId)
+            val currentNoteId = _uiState.value.noteId
+            _uiState.update { state ->
+                val updatedImages = state.images.filter { it.id != imageId }
+                val tokenRegex = Regex("!\\[.*?\\]\\(note-image:$imageId\\)|note-image:$imageId")
+                val updatedContent = state.contentMd.replace(tokenRegex, "").trim()
+
+                if (currentNoteId != null && updatedContent != state.contentMd) {
+                    viewModelScope.launch {
+                        noteRepository.updateNote(currentNoteId, UpdateNoteInput(contentMd = updatedContent))
+                    }
+                }
+
+                state.copy(
+                    images = updatedImages,
+                    contentMd = updatedContent
                 )
             }
         }

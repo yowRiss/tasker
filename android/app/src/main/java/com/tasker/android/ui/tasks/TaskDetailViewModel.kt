@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tasker.android.data.model.CreateTaskInput
 import com.tasker.android.data.model.Project
+import com.tasker.android.data.model.SubtaskInput
 import com.tasker.android.data.model.Tag
+import com.tasker.android.data.model.UpdateTaskInput
 import com.tasker.android.data.repository.TaskRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -140,17 +142,40 @@ class TaskDetailViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            taskRepository.createTask(
-                CreateTaskInput(
-                    title = state.title.trim(),
-                    description = state.description.ifBlank { null },
-                    dueDate = state.dueDate,
-                    priority = state.priority,
-                    projectId = state.projectId,
-                    tagIds = state.selectedTagIds,
-                    subtasks = state.subtasks.map { it.title }
+            val currentTaskId = state.taskId
+            if (currentTaskId != null) {
+                taskRepository.updateTask(
+                    id = currentTaskId,
+                    input = UpdateTaskInput(
+                        title = state.title.trim(),
+                        description = state.description.ifBlank { null },
+                        dueDate = state.dueDate,
+                        priority = state.priority,
+                        projectId = state.projectId,
+                        tagIds = state.selectedTagIds,
+                        subtasks = state.subtasks.mapIndexed { idx, st ->
+                            SubtaskInput(
+                                id = st.id,
+                                title = st.title,
+                                completed = st.completed,
+                                position = idx,
+                            )
+                        }
+                    )
                 )
-            )
+            } else {
+                taskRepository.createTask(
+                    CreateTaskInput(
+                        title = state.title.trim(),
+                        description = state.description.ifBlank { null },
+                        dueDate = state.dueDate,
+                        priority = state.priority,
+                        projectId = state.projectId,
+                        tagIds = state.selectedTagIds,
+                        subtasks = state.subtasks.map { it.title }
+                    )
+                )
+            }
             _uiState.update { it.copy(isLoading = false, isSaved = true) }
         }
     }

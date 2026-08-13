@@ -208,6 +208,83 @@ class TaskRepository @Inject constructor(
         return getTask(taskId)!!
     }
 
+    suspend fun updateTask(id: String, input: UpdateTaskInput): Task {
+        val existing = taskDao.getById(id)
+            ?: throw IllegalArgumentException("Task not found: $id")
+        val now = Instant.now().toString()
+
+        val newTitle = input.title?.trim() ?: existing.title
+        val newDescription = if (input.description != null) {
+            input.description.trim().ifEmpty { null }
+        } else {
+            existing.description
+        }
+        val newDueDate = input.dueDate ?: existing.dueDate
+        val newPriority = input.priority ?: existing.priority
+        val newProjectId = input.projectId ?: existing.projectId
+
+        val updatedTaskEntity = existing.copy(
+            title = newTitle,
+            description = newDescription,
+            dueDate = newDueDate,
+            priority = newPriority,
+            projectId = newProjectId,
+            updatedAt = now,
+        )
+
+        val payload = buildJsonObject {
+            put("id", id)
+            input.title?.let { put("title", it.trim()) }
+            if (input.description != null) put("description", input.description.trim())
+            if (input.dueDate != null) put("due_date", input.dueDate)
+            input.priority?.let { put("priority", it) }
+            if (input.projectId != null) put("project_id", input.projectId)
+            if (input.tagIds != null) putJsonArray("tag_ids") {
+                input.tagIds.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
+            }
+        }.toString()
+
+        db.withTransaction {
+            taskDao.upsert(updatedTaskEntity)
+
+            if (input.tagIds != null) {
+                taskTagDao.deleteForTask(id)
+                val newTags = input.tagIds.map { tagId ->
+                    TaskTagEntity(taskId = id, tagId = tagId, createdAt = now)
+                }
+                if (newTags.isNotEmpty()) taskTagDao.insertAll(newTags)
+            }
+
+            if (input.subtasks != null) {
+                subtaskDao.deleteForTask(id)
+                val newSubtasks = input.subtasks.mapIndexed { index, stInput ->
+                    SubtaskEntity(
+                        id = stInput.id ?: UUID.randomUUID().toString(),
+                        taskId = id,
+                        title = stInput.title.trim(),
+                        completed = stInput.completed,
+                        position = stInput.position,
+                        createdAt = now,
+                        updatedAt = now,
+                    )
+                }
+                if (newSubtasks.isNotEmpty()) subtaskDao.upsertAll(newSubtasks)
+            }
+
+            syncQueueDao.enqueue(
+                SyncQueueEntity(
+                    entityType = "task",
+                    entityId = id,
+                    operation = "UPDATE",
+                    payload = payload,
+                    createdAt = now,
+                )
+            )
+        }
+
+        return getTask(id)!!
+    }
+
     suspend fun toggleTaskCompletion(taskId: String, completed: Boolean) {
         val now = Instant.now().toString()
         val status = if (completed) "completed" else "open"

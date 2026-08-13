@@ -232,6 +232,35 @@ class NoteRepository @Inject constructor(
         return imageEntity.toDomain()
     }
 
+    suspend fun deleteNoteImage(imageId: String) {
+        val existing = noteImageDao.getById(imageId) ?: return
+        val now = Instant.now().toString()
+
+        runCatching {
+            val file = File(existing.localUri)
+            if (file.exists()) file.delete()
+        }
+
+        val payload = buildJsonObject {
+            put("image_id", imageId)
+            put("note_id", existing.noteId)
+            if (existing.objectPath != null) put("object_path", existing.objectPath)
+        }.toString()
+
+        db.withTransaction {
+            noteImageDao.delete(imageId)
+            syncQueueDao.enqueue(
+                SyncQueueEntity(
+                    entityType = "note_image",
+                    entityId = imageId,
+                    operation = "DELETE_IMAGE",
+                    payload = payload,
+                    createdAt = now,
+                )
+            )
+        }
+    }
+
     // ── Mappers ────────────────────────────────────────────────────
 
     private fun TagEntity.toDomain() = Tag(

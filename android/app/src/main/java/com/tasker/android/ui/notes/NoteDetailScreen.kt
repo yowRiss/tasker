@@ -33,6 +33,13 @@ import coil3.request.ImageRequest
 import com.tasker.android.ui.theme.TaskerTheme
 import java.io.File
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import com.tasker.android.data.model.NoteImage
+import com.tasker.android.ui.components.ZoomableImageDialog
+
+import androidx.compose.material.icons.outlined.Functions
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoteDetailScreen(
@@ -43,6 +50,8 @@ fun NoteDetailScreen(
     val colors = TaskerTheme.colors
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+
+    var activeZoomImage by remember { mutableStateOf<NoteImage?>(null) }
 
     LaunchedEffect(noteId) {
         viewModel.initialize(noteId)
@@ -57,6 +66,24 @@ fun NoteDetailScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         uri?.let { viewModel.attachImage(it) }
+    }
+
+    activeZoomImage?.let { img ->
+        val imageFile = remember(img.localUri, img.id) {
+            val f = File(img.localUri)
+            if (f.exists()) f
+            else File(context.filesDir, "images/${img.id}.jpg")
+        }
+        val model = if (imageFile.exists()) imageFile else img.localUri
+        ZoomableImageDialog(
+            model = model,
+            contentDescription = img.altText ?: "Note Image",
+            onDismissRequest = { activeZoomImage = null },
+            onDelete = {
+                viewModel.deleteImage(img.id)
+                activeZoomImage = null
+            }
+        )
     }
 
     Scaffold(
@@ -77,6 +104,12 @@ fun NoteDetailScreen(
                             contentDescription = if (uiState.isPreviewMode) "Edit Mode" else "Preview Mode",
                             tint = colors.accent
                         )
+                    }
+                    if (!uiState.isPreviewMode) {
+                        // Math insertion helper
+                        IconButton(onClick = viewModel::insertMathTemplate) {
+                            Icon(Icons.Outlined.Functions, "Insert Math Formula", tint = colors.accent)
+                        }
                     }
                     // Photo picker
                     IconButton(onClick = {
@@ -144,24 +177,42 @@ fun NoteDetailScreen(
                             if (f.exists()) f
                             else File(context.filesDir, "images/${img.id}.jpg")
                         }
+                        val imageModel = if (imageFile.exists()) imageFile else img.localUri
                         Card(
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.size(100.dp)
+                            modifier = Modifier
+                                .size(110.dp)
+                                .clickable { activeZoomImage = img }
                         ) {
                             Box(modifier = Modifier.fillMaxSize()) {
                                 AsyncImage(
                                     model = ImageRequest.Builder(context)
-                                        .data(if (imageFile.exists()) imageFile else img.localUri)
+                                        .data(imageModel)
                                         .build(),
                                     contentDescription = img.altText ?: "Note Image",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
                                 )
+                                IconButton(
+                                    onClick = { viewModel.deleteImage(img.id) },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(4.dp)
+                                        .size(26.dp)
+                                        .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Delete,
+                                        contentDescription = "Delete Image",
+                                        tint = Color(0xFFFF5252),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                                 if (img.syncStatus == "pending") {
                                     Surface(
                                         color = Color.Black.copy(alpha = 0.55f),
-                                        shape = RoundedCornerShape(bottomStart = 8.dp),
-                                        modifier = Modifier.align(Alignment.TopEnd)
+                                        shape = RoundedCornerShape(topStart = 8.dp),
+                                        modifier = Modifier.align(Alignment.BottomStart)
                                     ) {
                                         Text(
                                             text = "Local",
@@ -186,7 +237,7 @@ fun NoteDetailScreen(
                     .weight(1f)
             ) {
                 if (uiState.isPreviewMode) {
-                    // Preview Mode: render content
+                    // Preview Mode: render content with math and list formatting
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -194,7 +245,7 @@ fun NoteDetailScreen(
                             .verticalScroll(rememberScrollState())
                     ) {
                         Text(
-                            text = uiState.contentMd.ifBlank { "(Empty note)" },
+                            text = NoteMathParser.formatMathAndMarkdown(uiState.contentMd),
                             style = MaterialTheme.typography.bodyLarge,
                             color = colors.textPrimary
                         )
@@ -204,7 +255,7 @@ fun NoteDetailScreen(
                     OutlinedTextField(
                         value = uiState.contentMd,
                         onValueChange = viewModel::onContentChange,
-                        placeholder = { Text("Write your markdown notes here...", color = colors.textTertiary) },
+                        placeholder = { Text("Write your markdown notes here... (Type '-' for auto list)", color = colors.textTertiary) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Color.Transparent,
                             unfocusedBorderColor = Color.Transparent,
