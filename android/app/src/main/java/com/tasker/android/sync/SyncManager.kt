@@ -1,6 +1,7 @@
 package com.tasker.android.sync
 
 import com.tasker.android.data.local.dao.SyncQueueDao
+import com.tasker.android.data.repository.AuthRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,8 +22,6 @@ data class SyncState(
     val pendingCount: Int = 0,
     val failedCount: Int = 0,
 )
-
-import com.tasker.android.data.repository.AuthRepository
 
 @Singleton
 class SyncManager @Inject constructor(
