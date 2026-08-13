@@ -85,7 +85,19 @@ class NoteDetailViewModel @Inject constructor(
         val attached = noteRepository.attachImage(noteId, uri)
         if (attached != null) {
             _uiState.update { state ->
-                state.copy(images = state.images + attached)
+                val imageToken = "![image](note-image:${attached.id})"
+                val updatedMd = when {
+                    state.contentMd.contains(attached.id) -> state.contentMd
+                    state.contentMd.isBlank() -> imageToken
+                    else -> "${state.contentMd}\n\n$imageToken"
+                }
+                viewModelScope.launch {
+                    noteRepository.updateNote(noteId, UpdateNoteInput(contentMd = updatedMd))
+                }
+                state.copy(
+                    images = state.images + attached,
+                    contentMd = updatedMd
+                )
             }
         }
     }

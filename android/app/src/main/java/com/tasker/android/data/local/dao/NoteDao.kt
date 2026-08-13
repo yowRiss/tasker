@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.tasker.android.data.local.entity.NoteEntity
 import com.tasker.android.data.local.entity.NoteImageEntity
 import com.tasker.android.data.local.entity.NoteTagEntity
@@ -25,7 +26,7 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE id = :id AND is_deleted = 0")
     suspend fun getById(id: String): NoteEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(note: NoteEntity)
 
     @Query("UPDATE notes SET is_deleted = 1, updated_at = :now WHERE id = :id")
@@ -44,7 +45,7 @@ interface NoteTagDao {
     """)
     suspend fun getTagsForNote(noteId: String): List<TagEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertAll(noteTags: List<NoteTagEntity>)
 
     @Query("DELETE FROM note_tags WHERE note_id = :noteId")
@@ -63,7 +64,7 @@ interface NoteTaskLinkDao {
     """)
     suspend fun getTasksForNote(noteId: String): List<TaskEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertAll(links: List<NoteTaskLinkEntity>)
 
     @Query("DELETE FROM note_task_links WHERE note_id = :noteId")
@@ -84,7 +85,7 @@ interface NoteImageDao {
     @Query("SELECT * FROM note_images WHERE id = :id")
     suspend fun getById(id: String): NoteImageEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(image: NoteImageEntity)
 
     @Query("DELETE FROM note_images WHERE id = :id")
