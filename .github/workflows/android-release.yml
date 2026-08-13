@@ -5,6 +5,9 @@ on:
     branches:
       - main
       - master
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-release.yml'
     tags:
       - 'v*'
   workflow_dispatch:
