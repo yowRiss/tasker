@@ -60,16 +60,24 @@ class NoteDetailViewModel @Inject constructor(
     fun togglePreviewMode() = _uiState.update { it.copy(isPreviewMode = !it.isPreviewMode) }
 
     fun attachImage(uri: Uri) {
-        val noteId = _uiState.value.noteId
         viewModelScope.launch {
-            if (noteId == null) {
-                // First save note to get an ID
-                saveNoteInternal { savedNoteId ->
-                    attachImageToNote(savedNoteId, uri)
-                }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            val currentNoteId = _uiState.value.noteId
+            val targetNoteId = if (currentNoteId == null) {
+                val currentTitle = _uiState.value.title.ifBlank { "Untitled Note" }
+                val created = noteRepository.createNote(
+                    CreateNoteInput(
+                        title = currentTitle,
+                        contentMd = _uiState.value.contentMd
+                    )
+                )
+                _uiState.update { it.copy(noteId = created.id, title = created.title) }
+                created.id
             } else {
-                attachImageToNote(noteId, uri)
+                currentNoteId
             }
+            attachImageToNote(targetNoteId, uri)
+            _uiState.update { it.copy(isLoading = false) }
         }
     }
 

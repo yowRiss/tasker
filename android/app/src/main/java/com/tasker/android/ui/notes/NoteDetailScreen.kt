@@ -139,18 +139,39 @@ fun NoteDetailScreen(
                 Text("Images", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(uiState.images) { img ->
+                        val imageFile = remember(img.localUri, img.id) {
+                            val f = File(img.localUri)
+                            if (f.exists()) f
+                            else File(context.filesDir, "images/${img.id}.jpg")
+                        }
                         Card(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.size(100.dp)
                         ) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(File(img.localUri))
-                                    .build(),
-                                contentDescription = img.altText ?: "Note Image",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(if (imageFile.exists()) imageFile else img.localUri)
+                                        .build(),
+                                    contentDescription = img.altText ?: "Note Image",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                if (img.syncStatus == "pending") {
+                                    Surface(
+                                        color = Color.Black.copy(alpha = 0.55f),
+                                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                                        modifier = Modifier.align(Alignment.TopEnd)
+                                    ) {
+                                        Text(
+                                            text = "Local",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

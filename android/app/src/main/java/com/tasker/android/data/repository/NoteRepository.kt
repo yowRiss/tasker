@@ -176,22 +176,35 @@ class NoteRepository @Inject constructor(
         val imageId = UUID.randomUUID().toString()
         val now = Instant.now().toString()
 
+        val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        val ext = when (mimeType.lowercase()) {
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            "image/gif" -> "gif"
+            else -> "jpg"
+        }
+
         // Copy uri to app internal storage
         val imagesDir = File(context.filesDir, "images").apply { if (!exists()) mkdirs() }
-        val destFile = File(imagesDir, "$imageId.jpg")
+        val destFile = File(imagesDir, "$imageId.$ext")
 
-        runCatching {
+        val bytesCopied = runCatching {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 destFile.outputStream().use { output -> input.copyTo(output) }
-            }
-        }.getOrElse { return null }
+            } ?: 0L
+        }.getOrDefault(0L)
+
+        if (bytesCopied <= 0L || !destFile.exists()) {
+            if (destFile.exists()) destFile.delete()
+            return null
+        }
 
         val imageEntity = NoteImageEntity(
             id = imageId,
             noteId = noteId,
             localUri = destFile.absolutePath,
-            originalFilename = "$imageId.jpg",
-            mimeType = "image/jpeg",
+            originalFilename = "$imageId.$ext",
+            mimeType = mimeType,
             byteSize = destFile.length(),
             createdAt = now,
             syncStatus = "pending"

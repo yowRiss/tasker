@@ -130,12 +130,17 @@ class QueueProcessor @Inject constructor(
             "note_image" -> when (item.operation) {
                 "UPLOAD_IMAGE" -> {
                     val map = json.decodeFromString<Map<String, String>>(item.payload)
-                    val noteId = map["note_id"] ?: return null
+                    val fallbackNoteId = map["note_id"] ?: return null
                     val localUri = map["local_uri"] ?: return null
                     val file = File(localUri)
                     if (!file.exists()) return null
 
-                    val reqFile = file.asRequestBody("image/jpeg".toMediaType())
+                    val imageEntity = noteImageDao.getById(item.entityId)
+                    val noteId = imageEntity?.noteId?.takeIf { it.isNotBlank() } ?: fallbackNoteId
+                    if (noteId.isBlank()) return null
+
+                    val mimeType = imageEntity?.mimeType ?: "image/jpeg"
+                    val reqFile = file.asRequestBody(mimeType.toMediaType())
                     val body = MultipartBody.Part.createFormData("file", file.name, reqFile)
                     val res = noteApi.uploadImage(noteId, body)
                     noteImageDao.updateSyncStatus(item.entityId, "uploaded", res.image.id)
