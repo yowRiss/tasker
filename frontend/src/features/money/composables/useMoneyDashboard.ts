@@ -28,7 +28,9 @@ export function useMoneyDashboard() {
       case 'this_quarter': {
         const currentQuarter = Math.floor(d.getMonth() / 3)
         const start = new Date(d.getFullYear(), currentQuarter * 3, 1).toISOString().slice(0, 10)
-        const end = new Date(d.getFullYear(), (currentQuarter + 1) * 3, 0).toISOString().slice(0, 10)
+        const end = new Date(d.getFullYear(), (currentQuarter + 1) * 3, 0)
+          .toISOString()
+          .slice(0, 10)
         return { start, end }
       }
       case 'this_year': {

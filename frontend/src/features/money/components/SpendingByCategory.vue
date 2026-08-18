@@ -4,9 +4,7 @@
       <h3 class="card-title">Spending by Category</h3>
     </header>
 
-    <div v-if="!categorySpend.length" class="empty">
-      No expense records found for this period.
-    </div>
+    <div v-if="!categorySpend.length" class="empty">No expense records found for this period.</div>
 
     <div v-else class="content">
       <!-- SVG / Bar-list Graphic -->

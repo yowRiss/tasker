@@ -51,11 +51,7 @@
           <label for="txn-category">Category</label>
           <select id="txn-category" v-model="form.category_id" required>
             <option value="" disabled>Select Category</option>
-            <option
-              v-for="cat in filteredCategories"
-              :key="cat.id"
-              :value="cat.id"
-            >
+            <option v-for="cat in filteredCategories" :key="cat.id" :value="cat.id">
               {{ cat.name }}
             </option>
           </select>
@@ -103,12 +99,7 @@
 import { reactive, ref, computed } from 'vue'
 import ReceiptUploader from './ReceiptUploader.vue'
 import { useAccounts } from '../composables/useAccounts'
-import type {
-  Category,
-  Transaction,
-  TransactionInput,
-  TransactionType,
-} from '../money.types'
+import type { Category, Transaction, TransactionInput, TransactionType } from '../money.types'
 
 const props = defineProps<{
   transaction?: Transaction | null
@@ -137,9 +128,7 @@ const form = reactive<TransactionInput>({
 })
 
 const filteredCategories = computed(() => {
-  return props.categories.filter(
-    (c) => !c.archived_at && c.category_type === form.transaction_type,
-  )
+  return props.categories.filter((c) => !c.archived_at && c.category_type === form.transaction_type)
 })
 
 function setTransactionType(type: TransactionType) {

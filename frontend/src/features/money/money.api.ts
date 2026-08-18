@@ -40,9 +40,7 @@ export const updateAccount = (id: string, input: AccountPatchInput) =>
 export const deleteAccount = (id: string) => api<void>(`/v1/accounts/${id}`, { method: 'DELETE' })
 
 // Categories API
-export const listCategories = (
-  params: { type?: string; include_archived?: boolean } = {},
-) =>
+export const listCategories = (params: { type?: string; include_archived?: boolean } = {}) =>
   api<{ items: Category[] }>(`/v1/categories${query(params as Record<string, string | boolean>)}`)
 
 export const getCategory = (id: string) => api<Category>(`/v1/categories/${id}`)
@@ -143,10 +141,7 @@ export const createRecurringTransaction = (input: RecurringTransactionInput) =>
     body: JSON.stringify(input),
   })
 
-export const updateRecurringTransaction = (
-  id: string,
-  input: RecurringTransactionInput,
-) =>
+export const updateRecurringTransaction = (id: string, input: RecurringTransactionInput) =>
   api<RecurringTransaction>(`/v1/recurring-transactions/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -167,7 +162,4 @@ export const getMoneyDashboard = (params: {
   start_date: string
   end_date: string
   group_by?: 'day' | 'week' | 'month' | ''
-}) =>
-  api<MoneyDashboard>(
-    `/v1/money/dashboard${query(params as Record<string, string>)}`,
-  )
+}) => api<MoneyDashboard>(`/v1/money/dashboard${query(params as Record<string, string>)}`)

@@ -5,9 +5,7 @@
       <span class="muted font-small">Server Aggregated</span>
     </header>
 
-    <div v-if="!trend.length" class="empty">
-      No transaction trend data for this period.
-    </div>
+    <div v-if="!trend.length" class="empty">No transaction trend data for this period.</div>
 
     <div v-else class="content">
       <!-- uPlot Chart Canvas Mount Container -->
@@ -26,13 +24,12 @@
           </thead>
           <tbody>
             <tr v-for="point in trend" :key="point.period">
-              <td><strong>{{ point.period }}</strong></td>
+              <td>
+                <strong>{{ point.period }}</strong>
+              </td>
               <td class="text-right income-text">+{{ formatIDR(point.income) }}</td>
               <td class="text-right expense-text">-{{ formatIDR(point.expense) }}</td>
-              <td
-                class="text-right font-mono"
-                :class="getNetClass(point.income, point.expense)"
-              >
+              <td class="text-right font-mono" :class="getNetClass(point.income, point.expense)">
                 {{ formatIDR(getNet(point.income, point.expense)) }}
               </td>
             </tr>
@@ -66,10 +63,7 @@ async function renderChart() {
   chartContainer.value.innerHTML = ''
 
   // Dynamically import uPlot library & CSS only when rendering reports
-  const [uPlotModule] = await Promise.all([
-    import('uplot'),
-    import('uplot/dist/uPlot.min.css'),
-  ])
+  const [uPlotModule] = await Promise.all([import('uplot'), import('uplot/dist/uPlot.min.css')])
   const uPlot = uPlotModule.default
 
   // Prepare x timestamps and y arrays
@@ -114,7 +108,10 @@ async function renderChart() {
       {
         stroke: '#656b63',
         grid: { stroke: '#dfe2da', width: 1 },
-        values: (_u, splits) => splits.map((v) => new Date(v * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })),
+        values: (_u, splits) =>
+          splits.map((v) =>
+            new Date(v * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+          ),
       },
       {
         stroke: '#656b63',
@@ -131,7 +128,11 @@ async function renderChart() {
 }
 
 onMounted(() => void renderChart())
-watch(() => props.trend, () => void renderChart(), { deep: true })
+watch(
+  () => props.trend,
+  () => void renderChart(),
+  { deep: true },
+)
 
 onBeforeUnmount(() => {
   if (uplotInstance) {

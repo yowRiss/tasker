@@ -75,7 +75,11 @@
     <div v-if="task" class="field">
       <span class="label">Subtasks</span>
       <div v-if="form.subtasks && form.subtasks.length" class="subtask-list">
-        <div v-for="(subtask, index) in form.subtasks" :key="subtask.id || index" class="subtask-item">
+        <div
+          v-for="(subtask, index) in form.subtasks"
+          :key="subtask.id || index"
+          class="subtask-item"
+        >
           <input
             v-model="subtask.completed"
             type="checkbox"
@@ -191,12 +195,13 @@ async function handleCreateProject() {
   }
 }
 
-const initialSubtasks: SubtaskInput[] = props.task?.subtasks?.map((st) => ({
-  id: st.id,
-  title: st.title,
-  completed: st.completed,
-  position: st.position,
-})) ?? []
+const initialSubtasks: SubtaskInput[] =
+  props.task?.subtasks?.map((st) => ({
+    id: st.id,
+    title: st.title,
+    completed: st.completed,
+    position: st.position,
+  })) ?? []
 
 const form = reactive<TaskInput>({
   title: props.task?.title ?? '',

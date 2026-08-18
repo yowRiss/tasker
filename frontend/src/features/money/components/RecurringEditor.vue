@@ -142,9 +142,7 @@ const form = reactive<{
 })
 
 const filteredCategories = computed(() =>
-  props.categories.filter(
-    (c) => !c.archived_at && c.category_type === form.transaction_type,
-  ),
+  props.categories.filter((c) => !c.archived_at && c.category_type === form.transaction_type),
 )
 
 watch(

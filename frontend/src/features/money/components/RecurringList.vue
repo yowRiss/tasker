@@ -8,9 +8,7 @@
     >
       <div class="card-header">
         <div class="header-main">
-          <span class="cadence-badge" :class="rec.cadence">
-            🔄 {{ capitalize(rec.cadence) }}
-          </span>
+          <span class="cadence-badge" :class="rec.cadence"> 🔄 {{ capitalize(rec.cadence) }} </span>
           <h3 class="rec-title">{{ rec.description || getCategoryName(rec.category_id) }}</h3>
         </div>
         <span class="tag" :class="rec.is_active ? 'active-tag' : 'paused-tag'">
@@ -25,11 +23,15 @@
         </div>
 
         <div class="meta-row">
-          <span>Category: <strong>{{ getCategoryName(rec.category_id) }}</strong></span>
+          <span
+            >Category: <strong>{{ getCategoryName(rec.category_id) }}</strong></span
+          >
         </div>
 
         <div class="dates-row">
-          <span>Next Due: <strong>{{ formatDate(rec.next_due_date) }}</strong></span>
+          <span
+            >Next Due: <strong>{{ formatDate(rec.next_due_date) }}</strong></span
+          >
           <span v-if="rec.ends_on">Ends: {{ formatDate(rec.ends_on) }}</span>
         </div>
       </div>

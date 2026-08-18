@@ -5,8 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"tasker/backend/internal/auth"
 	"tasker/backend/internal/domain"
@@ -116,4 +120,103 @@ func CORS(origin string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		next.ServeHTTP(w, r)
+	})
+}
+
+type clientBucket struct {
+	count     int
+	resetTime time.Time
+}
+
+type ipRateLimiter struct {
+	mu     sync.Mutex
+	limits map[string]*clientBucket
+	rate   int
+	window time.Duration
+}
+
+func (rl *ipRateLimiter) allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	bucket, exists := rl.limits[ip]
+	if !exists || now.After(bucket.resetTime) {
+		rl.limits[ip] = &clientBucket{
+			count:     1,
+			resetTime: now.Add(rl.window),
+		}
+		return true
+	}
+
+	if bucket.count >= rl.rate {
+		return false
+	}
+
+	bucket.count++
+	return true
+}
+
+// NewRateLimiter creates an in-memory IP-based rate limiter middleware.
+func NewRateLimiter(rate int, window time.Duration) func(http.Handler) http.Handler {
+	rl := &ipRateLimiter{
+		limits: make(map[string]*clientBucket),
+		rate:   rate,
+		window: window,
+	}
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		for range ticker.C {
+			rl.mu.Lock()
+			now := time.Now()
+			for ip, bucket := range rl.limits {
+				if now.After(bucket.resetTime) {
+					delete(rl.limits, ip)
+				}
+			}
+			rl.mu.Unlock()
+		}
+	}()
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := clientIP(r)
+			if !rl.allow(ip) {
+				w.Header().Set("Retry-After", strconv.Itoa(int(window.Seconds())))
+				response.ProblemJSON(w, r, http.StatusTooManyRequests, "rate_limit_exceeded", "Too many requests, please try again later", nil)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 {
+			ip := strings.TrimSpace(parts[0])
+			if ip != "" {
+				return ip
+			}
+		}
+	}
+	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+		return strings.TrimSpace(xrip)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

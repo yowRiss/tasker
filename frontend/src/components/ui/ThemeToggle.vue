@@ -31,7 +31,9 @@ const { theme, isDark, toggleTheme } = useTheme()
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .theme-toggle:hover {

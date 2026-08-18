@@ -5,9 +5,7 @@
         class="complete"
         type="button"
         :title="
-          task.status === 'completed'
-            ? 'Restore task to Open'
-            : 'Mark done & send to Archive'
+          task.status === 'completed' ? 'Restore task to Open' : 'Mark done & send to Archive'
         "
         :aria-label="
           task.status === 'completed'
@@ -47,7 +45,9 @@
           <span v-if="task.subtasks && task.subtasks.length" class="subtask-badge">
             ✓ {{ completedCount(task.subtasks) }}/{{ task.subtasks.length }} subtasks
           </span>
-          <span v-if="task.due_date && task.status !== 'completed'">{{ dueLabel(task.due_date) }}</span>
+          <span v-if="task.due_date && task.status !== 'completed'">{{
+            dueLabel(task.due_date)
+          }}</span>
           <span v-if="task.priority" :class="`priority p${task.priority}`">{{
             priority(task.priority)
           }}</span>

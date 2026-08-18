@@ -15,7 +15,9 @@
           <span class="zoom-level">{{ Math.round(zoomScale * 100) }}%</span>
           <button type="button" class="tool-btn" title="Zoom In" @click="zoomIn">+</button>
           <button type="button" class="tool-btn" title="Reset Zoom" @click="resetZoom">100%</button>
-          <button type="button" class="tool-btn close-btn" title="Close (Esc)" @click="close">✕</button>
+          <button type="button" class="tool-btn close-btn" title="Close (Esc)" @click="close">
+            ✕
+          </button>
         </div>
       </div>
 

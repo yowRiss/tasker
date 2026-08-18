@@ -110,7 +110,9 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 .menu-button:hover {
   background: var(--color-bg-surface-muted);

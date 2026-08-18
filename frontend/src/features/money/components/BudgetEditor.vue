@@ -9,11 +9,7 @@
           <label for="bgt-cat">Expense Category</label>
           <select id="bgt-cat" v-model="form.category_id" required>
             <option value="" disabled>Select Expense Category</option>
-            <option
-              v-for="cat in expenseCategories"
-              :key="cat.id"
-              :value="cat.id"
-            >
+            <option v-for="cat in expenseCategories" :key="cat.id" :value="cat.id">
               {{ cat.name }}
             </option>
           </select>
@@ -87,7 +83,9 @@ const isEditing = computed(() => Boolean(props.budget))
 
 const now = new Date()
 const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-const lastDayThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
+const lastDayThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  .toISOString()
+  .slice(0, 10)
 
 const form = reactive<BudgetInput>({
   category_id: props.budget?.category_id ?? '',

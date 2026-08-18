@@ -3,15 +3,25 @@
     <div class="filter-grid">
       <div class="search-field">
         <input
-          v-model="filters.q"
+          :value="filters.q || ''"
           type="search"
           placeholder="Search description…"
           aria-label="Search transactions"
+          @input="updateFilter('q', ($event.target as HTMLInputElement).value)"
         />
       </div>
 
       <div class="select-field">
-        <select v-model="filters.type" aria-label="Transaction Type">
+        <select
+          :value="filters.type || ''"
+          aria-label="Transaction Type"
+          @change="
+            updateFilter(
+              'type',
+              ($event.target as HTMLSelectElement).value as TransactionFilters['type'],
+            )
+          "
+        >
           <option value="">All Types</option>
           <option value="expense">Expense</option>
           <option value="income">Income</option>
@@ -19,7 +29,11 @@
       </div>
 
       <div class="select-field">
-        <select v-model="filters.category_id" aria-label="Category">
+        <select
+          :value="filters.category_id || ''"
+          aria-label="Category"
+          @change="updateFilter('category_id', ($event.target as HTMLSelectElement).value)"
+        >
           <option value="">All Categories</option>
           <option v-for="cat in categories" :key="cat.id" :value="cat.id">
             {{ cat.name }} ({{ cat.category_type }})
@@ -28,32 +42,46 @@
       </div>
 
       <div class="date-field">
-        <input v-model="filters.start_date" type="date" aria-label="Start Date" placeholder="From date" />
+        <input
+          :value="filters.start_date || ''"
+          type="date"
+          aria-label="Start Date"
+          placeholder="From date"
+          @input="updateFilter('start_date', ($event.target as HTMLInputElement).value)"
+        />
       </div>
 
       <div class="date-field">
-        <input v-model="filters.end_date" type="date" aria-label="End Date" placeholder="To date" />
-      </div>
-
-      <div class="amount-field">
         <input
-          v-model="filters.min_amount"
-          type="number"
-          step="0.01"
-          min="0"
-          placeholder="Min IDR"
-          aria-label="Minimum Amount"
+          :value="filters.end_date || ''"
+          type="date"
+          aria-label="End Date"
+          placeholder="To date"
+          @input="updateFilter('end_date', ($event.target as HTMLInputElement).value)"
         />
       </div>
 
       <div class="amount-field">
         <input
-          v-model="filters.max_amount"
+          :value="filters.min_amount || ''"
+          type="number"
+          step="0.01"
+          min="0"
+          placeholder="Min IDR"
+          aria-label="Minimum Amount"
+          @input="updateFilter('min_amount', ($event.target as HTMLInputElement).value)"
+        />
+      </div>
+
+      <div class="amount-field">
+        <input
+          :value="filters.max_amount || ''"
           type="number"
           step="0.01"
           min="0"
           placeholder="Max IDR"
           aria-label="Maximum Amount"
+          @input="updateFilter('max_amount', ($event.target as HTMLInputElement).value)"
         />
       </div>
     </div>
@@ -84,6 +112,13 @@ const hasActiveFilters = computed(() => {
     f.q || f.type || f.category_id || f.start_date || f.end_date || f.min_amount || f.max_amount,
   )
 })
+
+function updateFilter<K extends keyof TransactionFilters>(key: K, value: TransactionFilters[K]) {
+  emit('update:filters', {
+    ...props.filters,
+    [key]: value,
+  })
+}
 
 function resetFilters() {
   emit('reset')

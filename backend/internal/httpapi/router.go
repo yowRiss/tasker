@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 	"tasker/backend/internal/auth"
 	"tasker/backend/internal/httpapi/handlers"
 	"tasker/backend/internal/httpapi/middleware"
@@ -26,7 +27,7 @@ func New(h *handlers.Handlers, v *auth.Verifier, origin string, logger *slog.Log
 			next.ServeHTTP(w, r)
 		})
 	})
-	r.Use(middleware.RequestID, middleware.Logger(logger), middleware.Recovery(logger))
+	r.Use(middleware.RequestID, middleware.Logger(logger), middleware.Recovery(logger), middleware.SecurityHeaders)
 	if origin != "" {
 		r.Use(middleware.CORS(origin))
 	}
@@ -34,8 +35,14 @@ func New(h *handlers.Handlers, v *auth.Verifier, origin string, logger *slog.Log
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
-	r.Post("/v1/auth/login", h.Login)
-	r.Post("/v1/auth/register", h.Register)
+
+	authLimiter := middleware.NewRateLimiter(10, time.Minute)
+	r.Group(func(ar chi.Router) {
+		ar.Use(authLimiter)
+		ar.Post("/v1/auth/login", h.Login)
+		ar.Post("/v1/auth/register", h.Register)
+	})
+
 	r.Group(func(pr chi.Router) {
 		pr.Use(middleware.Authenticate(v))
 		pr.Get("/v1/me", h.Me)

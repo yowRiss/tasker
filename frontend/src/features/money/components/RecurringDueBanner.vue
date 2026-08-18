@@ -3,12 +3,11 @@
     <div class="banner-header">
       <div class="title-row">
         <span class="bell-icon">🔔</span>
-        <h3 class="banner-title">
-          Due Recurring Transactions ({{ dueItems.length }})
-        </h3>
+        <h3 class="banner-title">Due Recurring Transactions ({{ dueItems.length }})</h3>
       </div>
       <p class="banner-subtitle">
-        Review pending occurrences below. Confirm to post the entry or skip to advance the schedule without posting.
+        Review pending occurrences below. Confirm to post the entry or skip to advance the schedule
+        without posting.
       </p>
     </div>
 
@@ -19,9 +18,7 @@
           <span class="item-title">
             {{ item.description || getCategoryName(item.category_id) }}
           </span>
-          <span class="item-meta">
-            Category: {{ getCategoryName(item.category_id) }}
-          </span>
+          <span class="item-meta"> Category: {{ getCategoryName(item.category_id) }} </span>
         </div>
 
         <div class="item-amount" :class="item.transaction_type">

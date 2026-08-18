@@ -25,20 +25,18 @@
 
       <h1>{{ mode === 'signin' ? 'Welcome back.' : 'Create account.' }}</h1>
       <p class="muted">
-        {{ mode === 'signin' ? 'Sign in to access your private tasks and notes.' : 'Register a new admin account for your workspace.' }}
+        {{
+          mode === 'signin'
+            ? 'Sign in to access your private tasks and notes.'
+            : 'Register a new admin account for your workspace.'
+        }}
       </p>
 
       <p v-if="auth.error.value" class="notice">{{ auth.error.value }}</p>
 
       <div class="field">
         <label for="username">Username</label>
-        <input
-          id="username"
-          v-model="username"
-          type="text"
-          autocomplete="username"
-          required
-        />
+        <input id="username" v-model="username" type="text" autocomplete="username" required />
       </div>
 
       <div class="field">
@@ -65,18 +63,21 @@
 
       <div class="field-remember">
         <label for="remember-me" class="remember-label">
-          <input
-            id="remember-me"
-            v-model="rememberMe"
-            type="checkbox"
-            class="remember-checkbox"
-          />
+          <input id="remember-me" v-model="rememberMe" type="checkbox" class="remember-checkbox" />
           <span>Remember me (7 days)</span>
         </label>
       </div>
 
       <button class="button primary" :disabled="sending">
-        {{ sending ? (mode === 'signin' ? 'Signing in…' : 'Registering…') : (mode === 'signin' ? 'Sign in' : 'Create account') }}
+        {{
+          sending
+            ? mode === 'signin'
+              ? 'Signing in…'
+              : 'Registering…'
+            : mode === 'signin'
+              ? 'Sign in'
+              : 'Create account'
+        }}
       </button>
     </form>
   </section>

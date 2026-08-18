@@ -49,25 +49,37 @@ export function renderMathToHtml(math: string): string {
     .replace(/\\Sigma/g, 'Σ')
     .replace(/\\Omega/g, 'Ω')
 
-  expr = expr.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '<span class="math-frac"><span class="math-num">$1</span><span class="math-den">$2</span></span>')
-  expr = expr.replace(/\\sqrt\{([^}]+)\}/g, '<span class="math-sqrt-symbol">√</span><span class="math-sqrt-body">$1</span>')
-  expr = expr.replace(/\^{([^}]+)\}/g, '<sup>$1</sup>').replace(/\^([0-9a-zA-Z+-=]+)/g, '<sup>$1</sup>')
-  expr = expr.replace(/_\{([^}]+)\}/g, '<sub>$1</sub>').replace(/_([0-9a-zA-Z+-=]+)/g, '<sub>$1</sub>')
+  expr = expr.replace(
+    /\\frac\{([^}]+)\}\{([^}]+)\}/g,
+    '<span class="math-frac"><span class="math-num">$1</span><span class="math-den">$2</span></span>',
+  )
+  expr = expr.replace(
+    /\\sqrt\{([^}]+)\}/g,
+    '<span class="math-sqrt-symbol">√</span><span class="math-sqrt-body">$1</span>',
+  )
+  expr = expr
+    .replace(/\^{([^}]+)\}/g, '<sup>$1</sup>')
+    .replace(/\^([0-9a-zA-Z+-=]+)/g, '<sup>$1</sup>')
+  expr = expr
+    .replace(/_\{([^}]+)\}/g, '<sub>$1</sub>')
+    .replace(/_([0-9a-zA-Z+-=]+)/g, '<sub>$1</sub>')
 
   return `<span class="math-formula">${expr}</span>`
 }
 
 export function renderMarkdown(markdown: string, urls: Map<string, string>) {
   const mathPlaceholders: string[] = []
-  let text = markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_, math: string) => {
-    const idx = mathPlaceholders.length
-    mathPlaceholders.push(`<div class="math-block">${renderMathToHtml(math)}</div>`)
-    return `___MATH_PLACEHOLDER_${idx}___`
-  }).replace(/\$([^\$\n]+?)\$/g, (_, math: string) => {
-    const idx = mathPlaceholders.length
-    mathPlaceholders.push(`<span class="math-inline">${renderMathToHtml(math)}</span>`)
-    return `___MATH_PLACEHOLDER_${idx}___`
-  })
+  const text = markdown
+    .replace(/\$\$([\s\S]+?)\$\$/g, (_, math: string) => {
+      const idx = mathPlaceholders.length
+      mathPlaceholders.push(`<div class="math-block">${renderMathToHtml(math)}</div>`)
+      return `___MATH_PLACEHOLDER_${idx}___`
+    })
+    .replace(/\$([^\$\n]+?)\$/g, (_, math: string) => {
+      const idx = mathPlaceholders.length
+      mathPlaceholders.push(`<span class="math-inline">${renderMathToHtml(math)}</span>`)
+      return `___MATH_PLACEHOLDER_${idx}___`
+    })
 
   let safe = escapeHtml(text)
   safe = safe.replace(imageToken, (_, id: string) =>
@@ -96,7 +108,9 @@ export function renderMarkdown(markdown: string, urls: Map<string, string>) {
   return safe
     .split(/\n{2,}/)
     .map((part) =>
-      /^<h[1-3]>|^<blockquote>|^<div class="math-block">/.test(part) ? part : `<p>${part.replace(/\n/g, '<br>')}</p>`,
+      /^<h[1-3]>|^<blockquote>|^<div class="math-block">/.test(part)
+        ? part
+        : `<p>${part.replace(/\n/g, '<br>')}</p>`,
     )
     .join('')
 }

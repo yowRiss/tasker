@@ -38,7 +38,9 @@
       >
         {{ uploading ? 'Uploading receipt…' : 'Attach Receipt Image' }}
       </button>
-      <span v-if="!transactionId" class="help-text">Save transaction first to attach a receipt.</span>
+      <span v-if="!transactionId" class="help-text"
+        >Save transaction first to attach a receipt.</span
+      >
     </div>
 
     <p v-if="error" class="notice">{{ error }}</p>
@@ -94,7 +96,10 @@ async function fetchSignedUrl() {
 }
 
 onMounted(() => void fetchSignedUrl())
-watch(() => props.receipt?.id, () => void fetchSignedUrl())
+watch(
+  () => props.receipt?.id,
+  () => void fetchSignedUrl(),
+)
 
 async function handleChoose(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]

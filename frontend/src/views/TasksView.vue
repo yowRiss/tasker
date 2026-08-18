@@ -16,7 +16,12 @@
     <div v-if="toastMessage" class="toast-banner">
       <span>{{ toastMessage }}</span>
       <div class="toast-actions">
-        <button v-if="lastCompletedTask" type="button" class="button subtle toast-btn" @click="undoArchive">
+        <button
+          v-if="lastCompletedTask"
+          type="button"
+          class="button subtle toast-btn"
+          @click="undoArchive"
+        >
           Undo
         </button>
         <RouterLink to="/archive" class="button toast-btn toast-link">View Archive</RouterLink>
@@ -107,7 +112,8 @@ const visible = store.visibleTasks(filters)
 
 async function reload() {
   await store.load({
-    status: filters.status === 'all' ? '' : filters.status === 'archived' ? 'completed' : filters.status,
+    status:
+      filters.status === 'all' ? '' : filters.status === 'archived' ? 'completed' : filters.status,
     project_id: filters.projectId,
     q: filters.query,
   })
@@ -260,7 +266,13 @@ function onProjectCreated(project: Project) {
   }
 }
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

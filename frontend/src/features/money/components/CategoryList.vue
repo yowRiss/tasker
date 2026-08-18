@@ -31,12 +31,7 @@
             >
               Archive
             </button>
-            <button
-              v-else
-              type="button"
-              class="button subtle"
-              @click="$emit('unarchive', cat.id)"
-            >
+            <button v-else type="button" class="button subtle" @click="$emit('unarchive', cat.id)">
               Restore
             </button>
             <button type="button" class="button subtle danger" @click="$emit('delete', cat.id)">
@@ -78,12 +73,7 @@
             >
               Archive
             </button>
-            <button
-              v-else
-              type="button"
-              class="button subtle"
-              @click="$emit('unarchive', cat.id)"
-            >
+            <button v-else type="button" class="button subtle" @click="$emit('unarchive', cat.id)">
               Restore
             </button>
             <button type="button" class="button subtle danger" @click="$emit('delete', cat.id)">

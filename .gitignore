@@ -38,6 +38,8 @@ build/
 # Backend & Go binaries
 bin/
 backend/bin/
+backend/api
+backend/tasker
 backend/coverage.out
 backend/internal/httpapi/webui/dist/*
 *.exe

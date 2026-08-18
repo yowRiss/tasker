@@ -41,21 +41,11 @@
       <div class="date-controls">
         <div class="field-inline">
           <label for="dash-start">From</label>
-          <input
-            id="dash-start"
-            v-model="startDate"
-            type="date"
-            @change="preset = 'custom'; reload()"
-          />
+          <input id="dash-start" v-model="startDate" type="date" @change="onCustomDateChange" />
         </div>
         <div class="field-inline">
           <label for="dash-end">To</label>
-          <input
-            id="dash-end"
-            v-model="endDate"
-            type="date"
-            @change="preset = 'custom'; reload()"
-          />
+          <input id="dash-end" v-model="endDate" type="date" @change="onCustomDateChange" />
         </div>
         <div class="field-inline">
           <label for="dash-group">Group By</label>
@@ -95,10 +85,7 @@
 
         <div class="card metric-card">
           <span class="metric-label">Net Savings / Cash Flow</span>
-          <div
-            class="metric-val"
-            :class="parseFloat(netSavings) >= 0 ? 'income' : 'expense'"
-          >
+          <div class="metric-val" :class="parseFloat(netSavings) >= 0 ? 'income' : 'expense'">
             {{ parseFloat(netSavings) >= 0 ? '+' : '' }}{{ formatIDR(netSavings) }}
           </div>
           <span class="metric-help">Income minus expenses</span>
@@ -141,6 +128,10 @@ const {
 function applyPreset(p: 'this_month' | 'last_month' | 'this_quarter' | 'this_year' | 'custom') {
   setPreset(p)
   void reload()
+}
+
+function onCustomDateChange() {
+  preset.value = 'custom'
 }
 
 onMounted(() => void reload())

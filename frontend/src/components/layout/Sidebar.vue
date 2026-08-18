@@ -77,7 +77,9 @@ nav a {
   text-decoration: none;
   color: var(--color-text-muted);
   font-weight: var(--font-semibold);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 nav a:hover {
   background: var(--color-bg-surface-muted);

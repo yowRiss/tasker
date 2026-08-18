@@ -38,7 +38,12 @@ canvas {
 }
 
 /* Headings */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   margin: 0;
   font-family: var(--font-heading);
   font-weight: var(--font-semibold);
@@ -195,7 +200,7 @@ a:hover {
 .button.primary {
   border-color: var(--color-primary);
   background: var(--color-primary);
-  color: #FFFFFF;
+  color: #ffffff;
 }
 
 .button.primary:hover {
@@ -228,7 +233,7 @@ a:hover {
 .button.danger:hover {
   border-color: var(--color-danger);
   background: var(--color-danger);
-  color: #FFFFFF;
+  color: #ffffff;
 }
 
 .button.subtle {
@@ -269,7 +274,9 @@ a:hover {
   border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   color: var(--color-text);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .field input:hover,

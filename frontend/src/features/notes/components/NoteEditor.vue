@@ -8,9 +8,7 @@
     <!-- Reminder & Notification Panel -->
     <div class="field reminder-card">
       <div class="reminder-header">
-        <label for="note-reminder" class="reminder-label">
-          🔔 Reminder & Notification
-        </label>
+        <label for="note-reminder" class="reminder-label"> 🔔 Reminder & Notification </label>
         <button
           v-if="reminderAtLocal"
           type="button"
@@ -102,7 +100,9 @@
               class="thumb"
               @error="handleImgError(img.id)"
             />
-            <span v-else-if="img.hasError" class="loading-thumb error-thumb">Failed to load preview</span>
+            <span v-else-if="img.hasError" class="loading-thumb error-thumb"
+              >Failed to load preview</span
+            >
             <span v-else class="loading-thumb">Loading image…</span>
           </div>
 
@@ -242,7 +242,8 @@ function handleKeydown(e: KeyboardEvent) {
         content.value = newText
         setTimeout(() => {
           if (contentTextarea.value) {
-            contentTextarea.value.selectionStart = contentTextarea.value.selectionEnd = start + insertion.length
+            contentTextarea.value.selectionStart = contentTextarea.value.selectionEnd =
+              start + insertion.length
           }
         }, 0)
       }
@@ -346,7 +347,8 @@ async function prepareNoteForImage() {
     emit('draftCreated', note)
     return note.id
   } catch (cause: unknown) {
-    const message = cause instanceof Error ? cause.message : 'Unable to prepare the note for upload.'
+    const message =
+      cause instanceof Error ? cause.message : 'Unable to prepare the note for upload.'
     error.value = message
     throw new Error(message)
   } finally {
@@ -524,4 +526,3 @@ function save() {
   width: 100%;
 }
 </style>
-

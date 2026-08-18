@@ -54,7 +54,10 @@
     <p v-else-if="loading" class="empty">Loading archived tasks…</p>
     <template v-else-if="archivedTasks.length">
       <div class="archive-summary">
-        <span class="count-badge">{{ archivedTasks.length }} {{ archivedTasks.length === 1 ? 'task' : 'tasks' }} in archive</span>
+        <span class="count-badge"
+          >{{ archivedTasks.length }} {{ archivedTasks.length === 1 ? 'task' : 'tasks' }} in
+          archive</span
+        >
       </div>
       <TaskList
         :tasks="archivedTasks"
@@ -68,7 +71,9 @@
     <div v-else class="card empty empty-archive">
       <div class="empty-icon">📁</div>
       <h3>Archive is empty</h3>
-      <p class="muted">When you complete tasks in your task list, they will be sent to archive and listed here.</p>
+      <p class="muted">
+        When you complete tasks in your task list, they will be sent to archive and listed here.
+      </p>
       <RouterLink to="/tasks" class="button primary margin-top">Go to Tasks</RouterLink>
     </div>
   </section>
@@ -152,7 +157,11 @@ async function handleDelete(task: Task) {
 }
 
 async function confirmClearArchive() {
-  if (confirm('Are you sure you want to permanently delete all archived tasks? This action cannot be undone.')) {
+  if (
+    confirm(
+      'Are you sure you want to permanently delete all archived tasks? This action cannot be undone.',
+    )
+  ) {
     try {
       await store.clearArchive()
       showToast('All archived tasks have been permanently deleted.')

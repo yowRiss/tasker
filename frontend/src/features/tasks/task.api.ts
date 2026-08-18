@@ -22,12 +22,7 @@ export const setCompletion = (id: string, completed: boolean) =>
     body: JSON.stringify({ completed }),
   })
 export const deleteTask = (id: string) => api<void>(`/v1/tasks/${id}`, { method: 'DELETE' })
-export const createSubtask = (
-  taskId: string,
-  title: string,
-  completed = false,
-  position = 0,
-) =>
+export const createSubtask = (taskId: string, title: string, completed = false, position = 0) =>
   api<Subtask>(`/v1/tasks/${taskId}/subtasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

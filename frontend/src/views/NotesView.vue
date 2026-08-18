@@ -29,7 +29,11 @@
           <RouterLink :to="`/notes/${note.id}`" class="note-link">
             <div class="note-title-row">
               <strong>{{ note.title }}</strong>
-              <span v-if="note.reminder_at" class="reminder-pill" :title="`Reminder set for ${formatReminder(note.reminder_at)}`">
+              <span
+                v-if="note.reminder_at"
+                class="reminder-pill"
+                :title="`Reminder set for ${formatReminder(note.reminder_at)}`"
+              >
                 🔔 {{ formatReminder(note.reminder_at) }}
               </span>
             </div>

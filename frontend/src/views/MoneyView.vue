@@ -10,7 +10,7 @@
         <button
           v-if="activeTab === 'transactions'"
           class="button primary"
-          @click="editingTransaction = null; creatingTransaction = !creatingTransaction"
+          @click="toggleCreatingTransaction"
         >
           {{ creatingTransaction ? 'Close' : 'New Transaction' }}
         </button>
@@ -18,23 +18,19 @@
         <button
           v-if="activeTab === 'categories'"
           class="button primary"
-          @click="editingCategory = null; creatingCategory = !creatingCategory"
+          @click="toggleCreatingCategory"
         >
           {{ creatingCategory ? 'Close' : 'New Category' }}
         </button>
 
-        <button
-          v-if="activeTab === 'budgets'"
-          class="button primary"
-          @click="editingBudget = null; creatingBudget = !creatingBudget"
-        >
+        <button v-if="activeTab === 'budgets'" class="button primary" @click="toggleCreatingBudget">
           {{ creatingBudget ? 'Close' : 'New Budget' }}
         </button>
 
         <button
           v-if="activeTab === 'recurring'"
           class="button primary"
-          @click="editingRecurring = null; creatingRecurring = !creatingRecurring"
+          @click="toggleCreatingRecurring"
         >
           {{ creatingRecurring ? 'Close' : 'New Recurring' }}
         </button>
@@ -65,7 +61,7 @@
         :class="{ active: activeTab === 'transactions' }"
         @click="activeTab = 'transactions'"
       >
-        Transactions
+        Transactions ({{ transactions.length }})
       </button>
       <button
         type="button"
@@ -110,7 +106,7 @@
         :categories="categories"
         :default-account-id="defaultAccountId"
         @save="handleSaveTransaction"
-        @cancel="creatingTransaction = false; editingTransaction = null"
+        @cancel="cancelTransaction"
         @receipt-updated="reloadTransactions"
       />
 
@@ -136,16 +132,12 @@
         v-if="creatingCategory || editingCategory"
         :category="editingCategory"
         @save="handleSaveCategory"
-        @cancel="creatingCategory = false; editingCategory = null"
+        @cancel="cancelCategory"
       />
 
       <div class="toolbar">
         <label class="checkbox-label">
-          <input
-            v-model="includeArchivedCategories"
-            type="checkbox"
-            @change="reloadCategories"
-          />
+          <input v-model="includeArchivedCategories" type="checkbox" @change="reloadCategories" />
           Show archived categories
         </label>
       </div>
@@ -169,7 +161,7 @@
         :budget="editingBudget"
         :categories="categories"
         @save="handleSaveBudget"
-        @cancel="creatingBudget = false; editingBudget = null"
+        @cancel="cancelBudget"
       />
 
       <p v-if="budgetStore.loading.value" class="empty">Loading budgets…</p>
@@ -179,7 +171,9 @@
         @edit="handleEditBudget"
         @delete="handleDeleteBudget"
       />
-      <p v-else class="card empty">No budgets set. Create a budget to track expense limits per category.</p>
+      <p v-else class="card empty">
+        No budgets set. Create a budget to track expense limits per category.
+      </p>
     </section>
 
     <!-- TAB 4: RECURRING -->
@@ -190,7 +184,7 @@
         :categories="categories"
         :default-account-id="defaultAccountId"
         @save="handleSaveRecurring"
-        @cancel="creatingRecurring = false; editingRecurring = null"
+        @cancel="cancelRecurring"
       />
 
       <p v-if="recurringStore.loading.value" class="empty">Loading recurring templates…</p>
@@ -201,7 +195,9 @@
         @edit="handleEditRecurring"
         @delete="handleDeleteRecurring"
       />
-      <p v-else class="card empty">No recurring transactions set up. Create templates for rent, subscriptions, or salary.</p>
+      <p v-else class="card empty">
+        No recurring transactions set up. Create templates for rent, subscriptions, or salary.
+      </p>
     </section>
   </section>
 </template>
@@ -236,7 +232,9 @@ import type {
   TransactionInput,
 } from '../features/money/money.types'
 
-const activeTab = ref<'dashboard' | 'transactions' | 'categories' | 'budgets' | 'recurring'>('dashboard')
+const activeTab = ref<'dashboard' | 'transactions' | 'categories' | 'budgets' | 'recurring'>(
+  'dashboard',
+)
 
 // Stores
 const accountStore = useAccounts()
@@ -266,18 +264,58 @@ const globalError = computed(() => {
 const creatingTransaction = ref(false)
 const editingTransaction = ref<Transaction | null>(null)
 
+function toggleCreatingTransaction() {
+  editingTransaction.value = null
+  creatingTransaction.value = !creatingTransaction.value
+}
+
+function cancelTransaction() {
+  creatingTransaction.value = false
+  editingTransaction.value = null
+}
+
 // Category state
 const creatingCategory = ref(false)
 const editingCategory = ref<Category | null>(null)
 const includeArchivedCategories = ref(false)
 
+function toggleCreatingCategory() {
+  editingCategory.value = null
+  creatingCategory.value = !creatingCategory.value
+}
+
+function cancelCategory() {
+  creatingCategory.value = false
+  editingCategory.value = null
+}
+
 // Budget state
 const creatingBudget = ref(false)
 const editingBudget = ref<Budget | null>(null)
 
+function toggleCreatingBudget() {
+  editingBudget.value = null
+  creatingBudget.value = !creatingBudget.value
+}
+
+function cancelBudget() {
+  creatingBudget.value = false
+  editingBudget.value = null
+}
+
 // Recurring state
 const creatingRecurring = ref(false)
 const editingRecurring = ref<RecurringTransaction | null>(null)
+
+function toggleCreatingRecurring() {
+  editingRecurring.value = null
+  creatingRecurring.value = !creatingRecurring.value
+}
+
+function cancelRecurring() {
+  creatingRecurring.value = false
+  editingRecurring.value = null
+}
 
 const filters = reactive<TransactionFilters>({
   start_date: '',

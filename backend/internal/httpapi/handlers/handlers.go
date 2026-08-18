@@ -40,11 +40,9 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 			"remote_addr", r.RemoteAddr,
 			"error", err,
 		)
-		response.ProblemJSON(w, r, 400, "malformed_json", "Failed to read request body: "+err.Error(), nil)
+		response.ProblemJSON(w, r, 400, "malformed_json", "Failed to read request body", nil)
 		return false
 	}
-
-	bodyStr := string(bodyBytes)
 
 	if len(bodyBytes) == 0 {
 		slog.Warn("empty request body received",
@@ -58,7 +56,6 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 			"method":       r.Method,
 			"path":         r.URL.Path,
 			"content_type": r.Header.Get("Content-Type"),
-			"raw_body":     "[EMPTY BODY]",
 		}
 		response.ProblemJSON(w, r, 400, "malformed_json", "Malformed JSON: request body is empty (0 bytes)", detail)
 		return false
@@ -71,14 +68,12 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 			"path", r.URL.Path,
 			"remote_addr", r.RemoteAddr,
 			"content_type", r.Header.Get("Content-Type"),
-			"raw_body", bodyStr,
 			"error", err,
 		)
 		detail := map[string]string{
 			"method":       r.Method,
 			"path":         r.URL.Path,
 			"content_type": r.Header.Get("Content-Type"),
-			"raw_body":     bodyStr,
 			"decode_error": err.Error(),
 		}
 		response.ProblemJSON(w, r, 400, "malformed_json", "Malformed JSON: "+err.Error(), detail)
@@ -107,7 +102,7 @@ func writeErr(w http.ResponseWriter, r *http.Request, e error) {
 		}
 	}
 	slog.Error("handler error", "request_id", response.RequestID(r), "error", e)
-	response.ProblemJSON(w, r, 500, "internal_error", "Internal server error: "+e.Error(), nil)
+	response.ProblemJSON(w, r, 500, "internal_error", "Internal server error", nil)
 }
 func id(r *http.Request, n string) string { return chi.URLParam(r, n) }
 func limit(r *http.Request) int {
@@ -620,7 +615,7 @@ func (h *Handlers) Note(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, 200, x)
 }
 func (h *Handlers) PatchNote(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		response.ProblemJSON(w, r, 400, "invalid_json", "Invalid JSON body", nil)
 		return

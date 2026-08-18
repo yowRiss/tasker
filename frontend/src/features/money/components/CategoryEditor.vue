@@ -38,12 +38,7 @@
         <div class="field">
           <label for="cat-color">Badge Color (Optional)</label>
           <div class="color-picker-row">
-            <input
-              id="cat-color"
-              v-model="form.color"
-              type="color"
-              class="color-input"
-            />
+            <input id="cat-color" v-model="form.color" type="color" class="color-input" />
             <input
               v-model="form.color"
               type="text"

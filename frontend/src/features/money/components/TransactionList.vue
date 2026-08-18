@@ -1,16 +1,9 @@
 <template>
   <div class="transaction-list card">
-    <div v-if="!transactions.length" class="empty">
-      No transactions recorded.
-    </div>
+    <div v-if="!transactions.length" class="empty">No transactions recorded.</div>
 
     <div v-else class="list-table">
-      <div
-        v-for="txn in transactions"
-        :key="txn.id"
-        class="txn-row"
-        :class="txn.transaction_type"
-      >
+      <div v-for="txn in transactions" :key="txn.id" class="txn-row" :class="txn.transaction_type">
         <div class="date-col">
           <span class="txn-date">{{ formatDate(txn.transaction_date) }}</span>
           <span class="type-pill" :class="txn.transaction_type">
@@ -20,7 +13,9 @@
 
         <div class="details-col">
           <div class="main-info">
-            <span class="description">{{ txn.description || txn.category_name || 'Transaction' }}</span>
+            <span class="description">{{
+              txn.description || txn.category_name || 'Transaction'
+            }}</span>
             <span v-if="txn.receipt" class="receipt-pill" title="Has attached receipt">
               📎 Receipt
             </span>

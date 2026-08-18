@@ -72,7 +72,11 @@ export function useNoteNotifications() {
   function fireNotification(note: Note, offsetMinutes: number) {
     const timingText = offsetMinutes === 0 ? 'Now' : formatOffsetLabel(offsetMinutes)
     const title = `🔔 Note Reminder: ${note.title}`
-    const excerpt = note.content_md.replace(/[#*_`>-]/g, ' ').trim().slice(0, 100) || 'Reminder alert'
+    const excerpt =
+      note.content_md
+        .replace(/[#*_`>-]/g, ' ')
+        .trim()
+        .slice(0, 100) || 'Reminder alert'
     const body = `${timingText} • ${excerpt}`
 
     const notif = new Notification(title, {

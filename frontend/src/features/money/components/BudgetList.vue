@@ -18,8 +18,12 @@
 
       <div class="progress-section">
         <div class="amounts-row">
-          <span class="spent">Spent: <strong>{{ formatIDR(bgt.spent) }}</strong></span>
-          <span class="limit">Limit: <strong>{{ formatIDR(bgt.amount_limit) }}</strong></span>
+          <span class="spent"
+            >Spent: <strong>{{ formatIDR(bgt.spent) }}</strong></span
+          >
+          <span class="limit"
+            >Limit: <strong>{{ formatIDR(bgt.amount_limit) }}</strong></span
+          >
         </div>
 
         <div class="progress-bar-track">
@@ -34,7 +38,11 @@
           <span class="percent">{{ bgt.percent_used }}% used</span>
           <span class="remaining" :class="{ negative: bgt.is_over_budget }">
             {{ bgt.is_over_budget ? 'Over by ' : 'Remaining: ' }}
-            {{ formatIDR(bgt.is_over_budget ? Math.abs(parseFloat(bgt.remaining)).toString() : bgt.remaining) }}
+            {{
+              formatIDR(
+                bgt.is_over_budget ? Math.abs(parseFloat(bgt.remaining)).toString() : bgt.remaining,
+              )
+            }}
           </span>
         </div>
       </div>
