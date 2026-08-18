@@ -344,15 +344,23 @@ func (r *Repository) setTaskTags(ctx context.Context, tx pgx.Tx, u, id string, t
 }
 func scanNote(row pgx.Row) (domain.Note, error) {
 	var x domain.Note
-	err := row.Scan(&x.ID, &x.Title, &x.ContentMD, &x.CreatedAt, &x.UpdatedAt)
+	var remAt *time.Time
+	var remOffsets []int
+	err := row.Scan(&x.ID, &x.Title, &x.ContentMD, &remAt, &remOffsets, &x.CreatedAt, &x.UpdatedAt)
+	x.ReminderAt = remAt
+	if remOffsets == nil {
+		x.ReminderOffsets = []int{}
+	} else {
+		x.ReminderOffsets = remOffsets
+	}
 	return x, err
 }
 func (r *Repository) Note(ctx context.Context, tx pgx.Tx, u, id string) (domain.Note, error) {
-	x, e := scanNote(tx.QueryRow(ctx, "select id,title,content_md,created_at,updated_at from notes where id=$1 and user_id=$2", id, u))
+	x, e := scanNote(tx.QueryRow(ctx, "select id,title,content_md,reminder_at,reminder_offsets,created_at,updated_at from notes where id=$1 and user_id=$2", id, u))
 	return x, e
 }
 func (r *Repository) Notes(ctx context.Context, tx pgx.Tx, u, q string, limit int) ([]domain.Note, error) {
-	sql := "select id,title,''::text,created_at,updated_at from notes where user_id=$1"
+	sql := "select id,title,''::text,reminder_at,reminder_offsets,created_at,updated_at from notes where user_id=$1"
 	args := []any{u}
 	if q != "" {
 		args = append(args, q)
@@ -374,11 +382,18 @@ func (r *Repository) Notes(ctx context.Context, tx pgx.Tx, u, q string, limit in
 	}
 	return out, rows.Err()
 }
-func (r *Repository) CreateNote(ctx context.Context, tx pgx.Tx, u, title, content string) (domain.Note, error) {
-	return scanNote(tx.QueryRow(ctx, "insert into notes(user_id,title,content_md)values($1,$2,$3)returning id,title,content_md,created_at,updated_at", u, title, content))
+func (r *Repository) CreateNote(ctx context.Context, tx pgx.Tx, u, title, content string, reminderAt *time.Time, reminderOffsets []int) (domain.Note, error) {
+	if reminderOffsets == nil {
+		reminderOffsets = []int{0}
+	}
+	return scanNote(tx.QueryRow(ctx, "insert into notes(user_id,title,content_md,reminder_at,reminder_offsets)values($1,$2,$3,$4,$5)returning id,title,content_md,reminder_at,reminder_offsets,created_at,updated_at", u, title, content, reminderAt, reminderOffsets))
 }
-func (r *Repository) UpdateNote(ctx context.Context, tx pgx.Tx, u, id string, title, content *string) (domain.Note, error) {
-	return scanNote(tx.QueryRow(ctx, "update notes set title=coalesce($3,title),content_md=coalesce($4,content_md)where id=$1 and user_id=$2 returning id,title,content_md,created_at,updated_at", id, u, title, content))
+func (r *Repository) UpdateNote(ctx context.Context, tx pgx.Tx, u, id string, title, content *string, reminderAt *time.Time, reminderAtSet bool, reminderOffsets *[]int) (domain.Note, error) {
+	var offsetsArg []int
+	if reminderOffsets != nil {
+		offsetsArg = *reminderOffsets
+	}
+	return scanNote(tx.QueryRow(ctx, "update notes set title=coalesce($3,title),content_md=coalesce($4,content_md),reminder_at=case when $5::boolean then $6::timestamptz else reminder_at end,reminder_offsets=coalesce($7,reminder_offsets) where id=$1 and user_id=$2 returning id,title,content_md,reminder_at,reminder_offsets,created_at,updated_at", id, u, title, content, reminderAtSet, reminderAt, offsetsArg))
 }
 func (r *Repository) DeleteNote(ctx context.Context, tx pgx.Tx, u, id string) error {
 	z, e := tx.Exec(ctx, "delete from notes where id=$1 and user_id=$2", id, u)

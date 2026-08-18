@@ -55,6 +55,15 @@ export function useAuth() {
       setToken(res.token)
       session.value = { token: res.token, user: res.user }
     },
+    async signUp(username: string, password: string, rememberMe: boolean = false) {
+      error.value = null
+      const res = await api<{ token: string; user: AuthUser }>('/v1/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, password, remember_me: rememberMe }),
+      })
+      setToken(res.token)
+      session.value = { token: res.token, user: res.user }
+    },
     signOut() {
       setToken(null)
       session.value = null

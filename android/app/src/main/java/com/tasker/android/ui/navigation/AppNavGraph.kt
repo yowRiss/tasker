@@ -131,6 +131,14 @@ fun AppNavGraph(
                 )
             }
 
+            // ── Calendar ──────────────────────────────────────────
+            composable(Screen.Calendar.route) {
+                com.tasker.android.ui.calendar.CalendarScreen(
+                    onNoteClick = { noteId -> navController.navigate(Screen.NoteDetail.route(noteId)) },
+                    onTaskClick = { taskId -> navController.navigate(Screen.TaskDetail.route(taskId)) },
+                )
+            }
+
             // ── Money ─────────────────────────────────────────────
             composable(Screen.Money.route) {
                 MoneyScreen(

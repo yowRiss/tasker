@@ -37,6 +37,7 @@ class AuthRepository @Inject constructor(
             tokenStore.saveToken(response.token)
             tokenStore.saveUser(response.user.id, response.user.username)
             tokenStore.saveLocalCredential(cleanUsername, password)
+            tokenStore.clearPendingRegistration()
         } catch (e: Exception) {
             if (isNetworkOrServerError(e)) {
                 // Main API is down — attempt local offline authentication
@@ -127,7 +128,7 @@ class AuthRepository @Inject constructor(
                     tokenStore.saveLocalCredential(username, password)
                     tokenStore.clearPendingRegistration()
                 } catch (_: Exception) {
-                    // Ignore login error, keep pending state
+                    // Keep pending state for retry
                 }
             } else if (!isNetworkOrServerError(e)) {
                 // Permanent failure — clear pending
@@ -147,6 +148,10 @@ class AuthRepository @Inject constructor(
     fun getCurrentUsername(): String? = tokenStore.getUsername()
 
     private fun isNetworkOrServerError(e: Throwable): Boolean {
-        return e is IOException || (e is HttpException && e.code() >= 500)
+        return e is IOException ||
+                e is java.net.ConnectException ||
+                e is java.net.UnknownHostException ||
+                e is java.net.SocketTimeoutException ||
+                (e is HttpException && e.code() >= 500)
     }
 }

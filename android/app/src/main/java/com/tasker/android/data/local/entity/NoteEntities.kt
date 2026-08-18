@@ -16,6 +16,10 @@ data class NoteEntity(
     val title: String,
     @ColumnInfo(name = "content_md")
     val contentMd: String = "",
+    @ColumnInfo(name = "reminder_at")
+    val reminderAt: String? = null,
+    @ColumnInfo(name = "reminder_offsets")
+    val reminderOffsets: String = "0",
     @ColumnInfo(name = "created_at")
     val createdAt: String,
     @ColumnInfo(name = "updated_at")

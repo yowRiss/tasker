@@ -568,8 +568,10 @@ func (h *Handlers) Notes(w http.ResponseWriter, r *http.Request) {
 }
 
 type noteInput struct {
-	Title     *string `json:"title"`
-	ContentMD *string `json:"content_md"`
+	Title           *string    `json:"title"`
+	ContentMD       *string    `json:"content_md"`
+	ReminderAt      *time.Time `json:"reminder_at"`
+	ReminderOffsets *[]int     `json:"reminder_offsets"`
 }
 
 func (h *Handlers) CreateNote(w http.ResponseWriter, r *http.Request) {
@@ -586,11 +588,15 @@ func (h *Handlers) CreateNote(w http.ResponseWriter, r *http.Request) {
 	if q.ContentMD != nil {
 		content = *q.ContentMD
 	}
+	var offsets []int
+	if q.ReminderOffsets != nil {
+		offsets = *q.ReminderOffsets
+	}
 	p := principal(r)
 	var x domain.Note
 	e = h.service.Do(r.Context(), p, func(tx pgx.Tx) error {
 		var e error
-		x, e = h.repo.CreateNote(r.Context(), tx, p.UserID, n, content)
+		x, e = h.repo.CreateNote(r.Context(), tx, p.UserID, n, content, q.ReminderAt, offsets)
 		return e
 	})
 	if e != nil {
@@ -614,10 +620,20 @@ func (h *Handlers) Note(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, 200, x)
 }
 func (h *Handlers) PatchNote(w http.ResponseWriter, r *http.Request) {
-	var q noteInput
-	if !decode(w, r, &q) {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		response.ProblemJSON(w, r, 400, "invalid_json", "Invalid JSON body", nil)
 		return
 	}
+	var q noteInput
+	if err := json.Unmarshal(bodyBytes, &q); err != nil {
+		response.ProblemJSON(w, r, 400, "invalid_json", "Invalid JSON body", nil)
+		return
+	}
+	var raw map[string]any
+	_ = json.Unmarshal(bodyBytes, &raw)
+	_, reminderAtSet := raw["reminder_at"]
+
 	if q.Title != nil {
 		n, e := service.Title(*q.Title, 280)
 		if e != nil {
@@ -630,7 +646,7 @@ func (h *Handlers) PatchNote(w http.ResponseWriter, r *http.Request) {
 	var x domain.Note
 	e := h.service.Do(r.Context(), p, func(tx pgx.Tx) error {
 		var e error
-		x, e = h.repo.UpdateNote(r.Context(), tx, p.UserID, id(r, "noteId"), q.Title, q.ContentMD)
+		x, e = h.repo.UpdateNote(r.Context(), tx, p.UserID, id(r, "noteId"), q.Title, q.ContentMD, q.ReminderAt, reminderAtSet, q.ReminderOffsets)
 		return e
 	})
 	if e != nil {

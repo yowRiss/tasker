@@ -2,10 +2,12 @@ package com.tasker.android.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.Notes
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.Notes
 import androidx.compose.material.icons.rounded.Settings
@@ -24,6 +26,7 @@ sealed class Screen(val route: String) {
     // ── Bottom tab roots ────────────────────────────────────────
     data object Tasks  : Screen("tasks")
     data object Notes  : Screen("notes")
+    data object Calendar : Screen("calendar")
     data object Money  : Screen("money")
     data object Settings : Screen("settings")
 
@@ -72,6 +75,12 @@ val bottomTabs = listOf(
         label         = "Notes",
         selectedIcon  = Icons.Rounded.Notes,
         unselectedIcon = Icons.Outlined.Notes,
+    ),
+    BottomTab(
+        screen        = Screen.Calendar,
+        label         = "Calendar",
+        selectedIcon  = Icons.Rounded.CalendarMonth,
+        unselectedIcon = Icons.Outlined.CalendarMonth,
     ),
     BottomTab(
         screen        = Screen.Money,

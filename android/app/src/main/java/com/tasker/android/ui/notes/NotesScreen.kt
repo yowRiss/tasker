@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.*
@@ -176,26 +177,61 @@ private fun NoteCard(
                 }
             }
 
-            // Image indicator if note has attached images
-            if (note.images.isNotEmpty()) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        Icons.Outlined.Image,
-                        contentDescription = null,
-                        tint = colors.accent,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = "${note.images.size} image(s)",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.accent
-                    )
+            // Indicators: Image & Reminder
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (note.reminderAt != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.NotificationsActive,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = formatReminderShort(note.reminderAt),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.accent,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (note.images.isNotEmpty()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.Image,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "${note.images.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.accent
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+private fun formatReminderShort(isoString: String): String {
+    return try {
+        val zdt = java.time.Instant.parse(isoString).atZone(java.time.ZoneId.systemDefault())
+        java.time.format.DateTimeFormatter.ofPattern("MMM d, h:mm a").format(zdt)
+    } catch (_: Exception) {
+        isoString
     }
 }
 

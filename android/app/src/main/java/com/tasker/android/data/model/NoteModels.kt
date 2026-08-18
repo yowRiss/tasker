@@ -16,6 +16,8 @@ data class Note(
     val id: String,
     val title: String,
     val contentMd: String = "",
+    val reminderAt: String? = null,
+    val reminderOffsets: List<Int> = listOf(0),
     val tags: List<Tag> = emptyList(),
     val tasks: List<Task> = emptyList(),
     val images: List<NoteImage> = emptyList(),
@@ -26,6 +28,8 @@ data class Note(
 data class CreateNoteInput(
     val title: String,
     val contentMd: String = "",
+    val reminderAt: String? = null,
+    val reminderOffsets: List<Int>? = null,
     val tagIds: List<String> = emptyList(),
     val taskIds: List<String> = emptyList(),
 )
@@ -33,6 +37,8 @@ data class CreateNoteInput(
 data class UpdateNoteInput(
     val title: String? = null,
     val contentMd: String? = null,
+    val reminderAt: String? = null,
+    val reminderOffsets: List<Int>? = null,
     val tagIds: List<String>? = null,
     val taskIds: List<String>? = null,
 )

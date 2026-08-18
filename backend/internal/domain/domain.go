@@ -50,13 +50,15 @@ type Task struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 type Note struct {
-	ID        string       `json:"id"`
-	Title     string       `json:"title"`
-	ContentMD string       `json:"content_md"`
-	Tags      []Tag        `json:"tags"`
-	Tasks     []LinkedTask `json:"tasks"`
-	CreatedAt time.Time    `json:"created_at"`
-	UpdatedAt time.Time    `json:"updated_at"`
+	ID              string       `json:"id"`
+	Title           string       `json:"title"`
+	ContentMD       string       `json:"content_md"`
+	ReminderAt      *time.Time   `json:"reminder_at,omitempty"`
+	ReminderOffsets []int        `json:"reminder_offsets,omitempty"`
+	Tags            []Tag        `json:"tags"`
+	Tasks           []LinkedTask `json:"tasks"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
 }
 type LinkedTask struct {
 	ID    string `json:"id"`

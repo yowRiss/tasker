@@ -157,9 +157,17 @@ class PullSync @Inject constructor(
 
                 val existing = noteDao.getById(dto.id)
                 if (existing == null || dto.updatedAt >= existing.updatedAt) {
+                    val offsetsStr = dto.reminderOffsets?.joinToString(",") ?: "0"
                     noteDao.upsert(
                         NoteEntity(
-                            id = dto.id, title = dto.title, contentMd = dto.contentMd, createdAt = dto.createdAt, updatedAt = dto.updatedAt, isDeleted = 0
+                            id = dto.id,
+                            title = dto.title,
+                            contentMd = dto.contentMd,
+                            reminderAt = dto.reminderAt,
+                            reminderOffsets = offsetsStr,
+                            createdAt = dto.createdAt,
+                            updatedAt = dto.updatedAt,
+                            isDeleted = 0
                         )
                     )
                     if (dto.tags != null) {

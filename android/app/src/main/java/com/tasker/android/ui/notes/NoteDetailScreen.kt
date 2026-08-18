@@ -1,5 +1,8 @@
 package com.tasker.android.ui.notes
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -19,6 +22,8 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Functions
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.*
@@ -37,6 +42,58 @@ import com.tasker.android.data.model.NoteImage
 import com.tasker.android.ui.components.ZoomableImageDialog
 import com.tasker.android.ui.theme.TaskerTheme
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Calendar
+
+private fun showDateTimePicker(context: Context, initialIso: String?, onSelected: (String) -> Unit) {
+    val cal = Calendar.getInstance()
+    if (!initialIso.isNullOrEmpty()) {
+        try {
+            val inst = Instant.parse(initialIso)
+            cal.timeInMillis = inst.toEpochMilli()
+        } catch (_: Exception) {}
+    }
+
+    DatePickerDialog(
+        context,
+        { _, year, month, day ->
+            TimePickerDialog(
+                context,
+                { _, hour, minute ->
+                    val selectedCal = Calendar.getInstance().apply {
+                        set(Calendar.YEAR, year)
+                        set(Calendar.MONTH, month)
+                        set(Calendar.DAY_OF_MONTH, day)
+                        set(Calendar.HOUR_OF_DAY, hour)
+                        set(Calendar.MINUTE, minute)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    val iso = Instant.ofEpochMilli(selectedCal.timeInMillis).toString()
+                    onSelected(iso)
+                },
+                cal.get(Calendar.HOUR_OF_DAY),
+                cal.get(Calendar.MINUTE),
+                false
+            ).show()
+        },
+        cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH),
+        cal.get(Calendar.DAY_OF_MONTH)
+    ).show()
+}
+
+private fun formatReminderDisplay(isoString: String?): String {
+    if (isoString.isNullOrBlank()) return "No reminder set"
+    return try {
+        val zdt = Instant.parse(isoString).atZone(ZoneId.systemDefault())
+        DateTimeFormatter.ofPattern("MMM d, yyyy 'at' h:mm a").format(zdt)
+    } catch (_: Exception) {
+        isoString
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -164,6 +221,107 @@ fun NoteDetailScreen(
                 colors = taskerOutlinedTextFieldColors(),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // Google Calendar Style Reminder Card
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceAlt),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (uiState.reminderAt != null) Icons.Outlined.NotificationsActive else Icons.Outlined.Notifications,
+                                contentDescription = "Reminder",
+                                tint = if (uiState.reminderAt != null) colors.accent else colors.textSecondary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Reminder & Notification",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.textPrimary
+                            )
+                        }
+
+                        if (uiState.reminderAt != null) {
+                            TextButton(onClick = viewModel::clearReminder) {
+                                Text("Remove", color = colors.destructive)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = formatReminderDisplay(uiState.reminderAt),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (uiState.reminderAt != null) colors.accent else colors.textSecondary
+                        )
+
+                        Button(
+                            onClick = {
+                                showDateTimePicker(context, uiState.reminderAt) { iso ->
+                                    viewModel.onReminderAtChange(iso)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (uiState.reminderAt != null) colors.accentLight else colors.accent,
+                                contentColor = if (uiState.reminderAt != null) colors.accent else Color.White
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(if (uiState.reminderAt != null) "Change" else "Set Reminder")
+                        }
+                    }
+
+                    if (uiState.reminderAt != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Alert Timing (Google Calendar style):",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.textSecondary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        val presetOptions = listOf(
+                            0 to "At time of event",
+                            5 to "5m before",
+                            10 to "10m before",
+                            15 to "15m before",
+                            30 to "30m before",
+                            60 to "1h before",
+                            1440 to "1d before"
+                        )
+
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(presetOptions) { (offset, label) ->
+                                val selected = uiState.reminderOffsets.contains(offset)
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { viewModel.toggleReminderOffset(offset) },
+                                    label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = colors.accent,
+                                        selectedLabelColor = Color.White,
+                                        containerColor = colors.surface,
+                                        labelColor = colors.textPrimary
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             // Attached Images Carousel
             if (uiState.images.isNotEmpty()) {

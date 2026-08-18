@@ -15,7 +15,7 @@
       </header>
       <NoteEditor
         :note-id="note.id"
-        :initial="{ title: note.title, content_md: note.content_md }"
+        :initial="{ title: note.title, content_md: note.content_md, reminder_at: note.reminder_at, reminder_offsets: note.reminder_offsets }"
         @save="save"
         @cancel="router.push('/notes')"
     /></template>

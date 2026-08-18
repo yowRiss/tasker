@@ -9,6 +9,10 @@ data class NoteDto(
     val title: String,
     @SerialName("content_md")
     val contentMd: String = "",
+    @SerialName("reminder_at")
+    val reminderAt: String? = null,
+    @SerialName("reminder_offsets")
+    val reminderOffsets: List<Int>? = null,
     val tags: List<TagDto>? = null,
     val tasks: List<TaskDto>? = null,
     @SerialName("created_at")
@@ -22,6 +26,10 @@ data class NoteCreateRequest(
     val title: String,
     @SerialName("content_md")
     val contentMd: String = "",
+    @SerialName("reminder_at")
+    val reminderAt: String? = null,
+    @SerialName("reminder_offsets")
+    val reminderOffsets: List<Int>? = null,
 )
 
 @Serializable
@@ -29,6 +37,10 @@ data class NoteUpdateRequest(
     val title: String? = null,
     @SerialName("content_md")
     val contentMd: String? = null,
+    @SerialName("reminder_at")
+    val reminderAt: String? = null,
+    @SerialName("reminder_offsets")
+    val reminderOffsets: List<Int>? = null,
 )
 
 @Serializable

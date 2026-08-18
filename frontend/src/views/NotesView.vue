@@ -27,7 +27,12 @@
       <li v-for="note in notes" :key="note.id" class="card note-card">
         <div class="note-card-main">
           <RouterLink :to="`/notes/${note.id}`" class="note-link">
-            <strong>{{ note.title }}</strong>
+            <div class="note-title-row">
+              <strong>{{ note.title }}</strong>
+              <span v-if="note.reminder_at" class="reminder-pill" :title="`Reminder set for ${formatReminder(note.reminder_at)}`">
+                🔔 {{ formatReminder(note.reminder_at) }}
+              </span>
+            </div>
             <small>{{ excerpt(note.content_md) }}</small>
             <time>Updated {{ format(note.updated_at) }}</time>
           </RouterLink>
@@ -49,8 +54,11 @@
 import { onMounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import NoteEditor from '../features/notes/components/NoteEditor.vue'
+import { useNoteNotifications } from '../features/notes/composables/useNoteNotifications'
 import { createNote, deleteNote, listNotes, updateNote } from '../features/notes/note.api'
 import type { Note, NoteInput } from '../features/notes/note.types'
+
+const { startScheduler } = useNoteNotifications()
 const router = useRouter(),
   notes = ref<Note[]>([]),
   q = ref(''),
@@ -70,7 +78,10 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(() => void load())
+onMounted(() => {
+  void load()
+  startScheduler(() => notes.value)
+})
 watch(q, () => {
   clearTimeout(timer)
   timer = window.setTimeout(() => void load(), 250)
@@ -131,6 +142,15 @@ function format(value: string) {
     new Date(value),
   )
 }
+function formatReminder(value: string) {
+  const d = new Date(value)
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(d)
+}
 </script>
 <style scoped>
 .notes-toolbar {
@@ -160,6 +180,20 @@ function format(value: string) {
   gap: 0.4rem;
   flex: 1;
   text-decoration: none;
+}
+.note-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.reminder-pill {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  background: var(--accent-light, #e0e7ff);
+  color: var(--accent, #2563eb);
+  border-radius: 12px;
+  font-weight: 500;
 }
 .note-link small,
 .note-link time {

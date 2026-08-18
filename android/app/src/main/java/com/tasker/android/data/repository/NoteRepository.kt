@@ -79,10 +79,13 @@ class NoteRepository @Inject constructor(
         val noteId = UUID.randomUUID().toString()
         val now = Instant.now().toString()
 
+        val offsetsStr = input.reminderOffsets?.joinToString(",") ?: "0"
         val noteEntity = NoteEntity(
             id = noteId,
             title = input.title.trim(),
             contentMd = input.contentMd,
+            reminderAt = input.reminderAt,
+            reminderOffsets = offsetsStr,
             createdAt = now,
             updatedAt = now,
         )
@@ -98,6 +101,10 @@ class NoteRepository @Inject constructor(
         val payload = buildJsonObject {
             put("title", input.title.trim())
             put("content_md", input.contentMd)
+            if (input.reminderAt != null) put("reminder_at", input.reminderAt)
+            if (input.reminderOffsets != null) {
+                put("reminder_offsets", kotlinx.serialization.json.JsonArray(input.reminderOffsets.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+            }
         }.toString()
 
         db.withTransaction {
@@ -124,11 +131,16 @@ class NoteRepository @Inject constructor(
 
         val newTitle = input.title?.trim() ?: existing.title
         val newContent = input.contentMd ?: existing.contentMd
+        val newReminderAt = input.reminderAt ?: existing.reminderAt
+        val newOffsets = input.reminderOffsets ?: existing.reminderOffsets
+        val newOffsetsStr = newOffsets.joinToString(",")
 
         val updatedEntity = NoteEntity(
             id = id,
             title = newTitle,
             contentMd = newContent,
+            reminderAt = newReminderAt,
+            reminderOffsets = newOffsetsStr,
             createdAt = existing.createdAt,
             updatedAt = now,
         )
@@ -136,6 +148,8 @@ class NoteRepository @Inject constructor(
         val payload = buildJsonObject {
             put("title", newTitle)
             put("content_md", newContent)
+            if (newReminderAt != null) put("reminder_at", newReminderAt)
+            put("reminder_offsets", kotlinx.serialization.json.JsonArray(newOffsets.map { kotlinx.serialization.json.JsonPrimitive(it) }))
         }.toString()
 
         db.withTransaction {
@@ -290,14 +304,23 @@ class NoteRepository @Inject constructor(
         syncStatus = syncStatus
     )
 
-    private fun NoteEntity.toDomain(tags: List<Tag>, tasks: List<Task>, images: List<NoteImage>) = Note(
-        id = id,
-        title = title,
-        contentMd = contentMd,
-        tags = tags,
-        tasks = tasks,
-        images = images,
-        createdAt = createdAt,
-        updatedAt = updatedAt
-    )
+    private fun NoteEntity.toDomain(tags: List<Tag>, tasks: List<Task>, images: List<NoteImage>): Note {
+        val offsets = try {
+            reminderOffsets.split(",").mapNotNull { it.trim().toIntOrNull() }
+        } catch (_: Exception) {
+            listOf(0)
+        }
+        return Note(
+            id = id,
+            title = title,
+            contentMd = contentMd,
+            reminderAt = reminderAt,
+            reminderOffsets = if (offsets.isNotEmpty()) offsets else listOf(0),
+            tags = tags,
+            tasks = tasks,
+            images = images,
+            createdAt = createdAt,
+            updatedAt = updatedAt
+        )
+    }
 }

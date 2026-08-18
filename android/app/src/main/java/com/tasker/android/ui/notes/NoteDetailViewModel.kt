@@ -1,5 +1,6 @@
 package com.tasker.android.ui.notes
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,7 +8,9 @@ import com.tasker.android.data.model.CreateNoteInput
 import com.tasker.android.data.model.NoteImage
 import com.tasker.android.data.model.UpdateNoteInput
 import com.tasker.android.data.repository.NoteRepository
+import com.tasker.android.notification.NoteReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +22,8 @@ data class NoteDetailUiState(
     val noteId: String? = null,
     val title: String = "",
     val contentMd: String = "",
+    val reminderAt: String? = null,
+    val reminderOffsets: List<Int> = listOf(0),
     val images: List<NoteImage> = emptyList(),
     val isPreviewMode: Boolean = false,
     val isSaved: Boolean = false,
@@ -28,6 +33,7 @@ data class NoteDetailUiState(
 
 @HiltViewModel
 class NoteDetailViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val noteRepository: NoteRepository,
 ) : ViewModel() {
 
@@ -45,6 +51,8 @@ class NoteDetailViewModel @Inject constructor(
                         noteId = note.id,
                         title = note.title,
                         contentMd = note.contentMd,
+                        reminderAt = note.reminderAt,
+                        reminderOffsets = if (note.reminderOffsets.isNotEmpty()) note.reminderOffsets else listOf(0),
                         images = note.images,
                         isLoading = false
                     )
@@ -56,6 +64,21 @@ class NoteDetailViewModel @Inject constructor(
     }
 
     fun onTitleChange(value: String) = _uiState.update { it.copy(title = value, errorMessage = null) }
+    fun onReminderAtChange(value: String?) = _uiState.update { it.copy(reminderAt = value) }
+    fun clearReminder() = _uiState.update { it.copy(reminderAt = null) }
+
+    fun toggleReminderOffset(minutes: Int) {
+        _uiState.update { state ->
+            val current = state.reminderOffsets
+            val updated = if (current.contains(minutes)) {
+                if (current.size > 1) current.filter { it != minutes } else current
+            } else {
+                current + minutes
+            }
+            state.copy(reminderOffsets = updated)
+        }
+    }
+
     fun onContentChange(value: String) {
         val oldText = _uiState.value.contentMd
         val updated = processAutoList(oldText, value)
@@ -98,41 +121,23 @@ class NoteDetailViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             val currentNoteId = _uiState.value.noteId
             val targetNoteId = if (currentNoteId == null) {
-                val currentTitle = _uiState.value.title.ifBlank { "Untitled Note" }
                 val created = noteRepository.createNote(
                     CreateNoteInput(
-                        title = currentTitle,
-                        contentMd = _uiState.value.contentMd
+                        title = _uiState.value.title.ifBlank { "Untitled Note" },
+                        contentMd = _uiState.value.contentMd,
+                        reminderAt = _uiState.value.reminderAt,
+                        reminderOffsets = _uiState.value.reminderOffsets,
                     )
                 )
-                _uiState.update { it.copy(noteId = created.id, title = created.title) }
+                _uiState.update { it.copy(noteId = created.id) }
                 created.id
             } else {
                 currentNoteId
             }
-            attachImageToNote(targetNoteId, uri)
-            _uiState.update { it.copy(isLoading = false) }
-        }
-    }
 
-    private suspend fun attachImageToNote(noteId: String, uri: Uri) {
-        val attached = noteRepository.attachImage(noteId, uri)
-        if (attached != null) {
-            _uiState.update { state ->
-                val imageToken = "![image](note-image:${attached.id})"
-                val updatedMd = when {
-                    state.contentMd.contains(attached.id) -> state.contentMd
-                    state.contentMd.isBlank() -> imageToken
-                    else -> "${state.contentMd}\n\n$imageToken"
-                }
-                viewModelScope.launch {
-                    noteRepository.updateNote(noteId, UpdateNoteInput(contentMd = updatedMd))
-                }
-                state.copy(
-                    images = state.images + attached,
-                    contentMd = updatedMd
-                )
-            }
+            noteRepository.attachImage(targetNoteId, uri)
+            val updatedImages = noteRepository.getNote(targetNoteId)?.images ?: emptyList()
+            _uiState.update { it.copy(images = updatedImages, isLoading = false) }
         }
     }
 
@@ -174,26 +179,36 @@ class NoteDetailViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            if (state.noteId == null) {
+            val savedNote = if (state.noteId == null) {
                 val created = noteRepository.createNote(
                     CreateNoteInput(
                         title = state.title.trim(),
-                        contentMd = state.contentMd
+                        contentMd = state.contentMd,
+                        reminderAt = state.reminderAt,
+                        reminderOffsets = state.reminderOffsets,
                     )
                 )
                 _uiState.update { it.copy(noteId = created.id, isLoading = false) }
-                onSuccess(created.id)
+                created
             } else {
                 noteRepository.updateNote(
                     state.noteId,
                     UpdateNoteInput(
                         title = state.title.trim(),
-                        contentMd = state.contentMd
+                        contentMd = state.contentMd,
+                        reminderAt = state.reminderAt,
+                        reminderOffsets = state.reminderOffsets,
                     )
                 )
                 _uiState.update { it.copy(isLoading = false) }
-                onSuccess(state.noteId)
+                noteRepository.getNote(state.noteId)
             }
+
+            if (savedNote != null) {
+                NoteReminderScheduler.scheduleNoteReminders(context, savedNote)
+            }
+
+            onSuccess(savedNote?.id ?: state.noteId ?: "")
         }
     }
 

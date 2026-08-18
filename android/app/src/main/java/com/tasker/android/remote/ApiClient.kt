@@ -26,11 +26,15 @@ class AuthInterceptor @Inject constructor(
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
         val token = tokenStore.getToken()
-        val request = chain.request().newBuilder()
-            .apply { if (token != null) header("Authorization", "Bearer $token") }
-            .build()
-        val response = chain.proceed(request)
-        if (response.code == 401) {
+        val isOfflineToken = token != null && (token.startsWith("offline_token_") || tokenStore.isOfflineSession())
+
+        val requestBuilder = chain.request().newBuilder()
+        if (token != null && !isOfflineToken) {
+            requestBuilder.header("Authorization", "Bearer $token")
+        }
+
+        val response = chain.proceed(requestBuilder.build())
+        if (response.code == 401 && !isOfflineToken && tokenStore.getPendingRegistration() == null) {
             tokenStore.clear()
             authEventBus.postLogout()
         }

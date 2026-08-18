@@ -7,6 +7,8 @@ export interface Note {
   id: string
   title: string
   content_md: string
+  reminder_at?: string | null
+  reminder_offsets?: number[]
   tags: Tag[]
   tasks: LinkedTask[]
   created_at: string
@@ -15,6 +17,8 @@ export interface Note {
 export interface NoteInput {
   title: string
   content_md: string
+  reminder_at?: string | null
+  reminder_offsets?: number[]
 }
 export interface NoteImage {
   id: string

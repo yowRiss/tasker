@@ -5,6 +5,46 @@
       <input id="note-title" v-model="title" maxlength="280" required />
     </div>
 
+    <!-- Reminder & Notification Panel -->
+    <div class="field reminder-card">
+      <div class="reminder-header">
+        <label for="note-reminder" class="reminder-label">
+          🔔 Reminder & Notification
+        </label>
+        <button
+          v-if="reminderAtLocal"
+          type="button"
+          class="button subtle danger font-small"
+          @click="clearReminder"
+        >
+          Remove Reminder
+        </button>
+      </div>
+      <div class="reminder-body">
+        <input
+          id="note-reminder"
+          v-model="reminderAtLocal"
+          type="datetime-local"
+          class="datetime-input"
+        />
+        <div v-if="reminderAtLocal" class="offset-section">
+          <span class="muted font-small font-bold">Alert timing:</span>
+          <div class="chip-group">
+            <button
+              v-for="opt in REMINDER_OPTIONS"
+              :key="opt.offsetMinutes"
+              type="button"
+              class="chip-button"
+              :class="{ active: selectedOffsets.includes(opt.offsetMinutes) }"
+              @click="toggleOffset(opt.offsetMinutes)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="toolbar">
       <button class="button" type="button" @click="preview = !preview">
         {{ preview ? 'Edit Markdown' : 'Preview Note' }}
@@ -106,6 +146,7 @@ import MarkdownPreview from './MarkdownPreview.vue'
 import ImageLightbox from '../../../components/ui/ImageLightbox.vue'
 import { deleteImage, imageAccess } from '../note.api'
 import { imageIds, insertAtCursor } from '../../../lib/markdown/noteImage'
+import { REMINDER_OPTIONS } from '../composables/useNoteNotifications'
 import type { Note, NoteImage, NoteInput } from '../note.types'
 
 interface AttachedItem {
@@ -113,6 +154,47 @@ interface AttachedItem {
   url?: string
   filename: string
   hasError?: boolean
+}
+
+function toDatetimeLocal(isoString?: string | null): string {
+  if (!isoString) return ''
+  const date = new Date(isoString)
+  if (isNaN(date.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+const props = defineProps<{
+  initial?: NoteInput
+  noteId?: string
+  createForImage?: (input: NoteInput) => Promise<Note>
+}>()
+
+const emit = defineEmits<{
+  save: [input: NoteInput]
+  cancel: []
+  draftCreated: [note: Note]
+}>()
+
+const title = ref(props.initial?.title ?? '')
+const content = ref(props.initial?.content_md ?? '')
+const reminderAtLocal = ref(toDatetimeLocal(props.initial?.reminder_at))
+const selectedOffsets = ref<number[]>(
+  props.initial?.reminder_offsets?.length ? [...props.initial.reminder_offsets] : [0],
+)
+
+function clearReminder() {
+  reminderAtLocal.value = ''
+}
+
+function toggleOffset(minutes: number) {
+  if (selectedOffsets.value.includes(minutes)) {
+    if (selectedOffsets.value.length > 1) {
+      selectedOffsets.value = selectedOffsets.value.filter((m) => m !== minutes)
+    }
+  } else {
+    selectedOffsets.value.push(minutes)
+  }
 }
 
 const selectedImage = ref<{ src: string; title: string } | null>(null)
@@ -141,7 +223,7 @@ function handleKeydown(e: KeyboardEvent) {
     const currentLine = val.substring(lineStart, start)
 
     const listMatch = currentLine.match(/^(\s*-\s+)(.*)/)
-    if (listMatch) {
+    if (listMatch && listMatch[1] && listMatch[2] !== undefined) {
       e.preventDefault()
       const indentAndDash = listMatch[1]
       const rest = listMatch[2].trim()
@@ -179,20 +261,6 @@ function handleImgError(id: string) {
   }
 }
 
-const props = defineProps<{
-  initial?: NoteInput
-  noteId?: string
-  createForImage?: (input: NoteInput) => Promise<Note>
-}>()
-
-const emit = defineEmits<{
-  save: [input: NoteInput]
-  cancel: []
-  draftCreated: [note: Note]
-}>()
-
-const title = ref(props.initial?.title ?? '')
-const content = ref(props.initial?.content_md ?? '')
 const preview = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
@@ -210,7 +278,6 @@ async function loadExistingImages() {
   const rawContent = props.initial?.content_md ?? ''
   const ids = imageIds(rawContent)
 
-  // Clean text for textarea input so user's editor input stays clean
   let cleanText = rawContent
   for (const id of ids) {
     cleanText = cleanText.replace(new RegExp(`\\s*note-image:${id}\\s*`, 'g'), ' ')
@@ -269,7 +336,12 @@ async function prepareNoteForImage() {
   error.value = null
   saving.value = true
   try {
-    const note = await props.createForImage({ title: trimmed, content_md: content.value })
+    const note = await props.createForImage({
+      title: trimmed,
+      content_md: content.value,
+      reminder_at: reminderAtLocal.value ? new Date(reminderAtLocal.value).toISOString() : null,
+      reminder_offsets: selectedOffsets.value,
+    })
     currentNoteId.value = note.id
     emit('draftCreated', note)
     return note.id
@@ -300,7 +372,15 @@ function save() {
       missingImages.map((img) => `note-image:${img.id}`).join('\n')
   }
 
-  emit('save', { title: trimmed, content_md: fullContent })
+  const reminder_at = reminderAtLocal.value ? new Date(reminderAtLocal.value).toISOString() : null
+  const reminder_offsets = selectedOffsets.value
+
+  emit('save', {
+    title: trimmed,
+    content_md: fullContent,
+    reminder_at,
+    reminder_offsets,
+  })
   saving.value = false
 }
 </script>
@@ -309,6 +389,60 @@ function save() {
 .note-editor {
   display: grid;
   gap: 1rem;
+}
+.reminder-card {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted, #f8f9fa);
+  display: grid;
+  gap: 0.75rem;
+}
+.reminder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.reminder-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.reminder-body {
+  display: grid;
+  gap: 0.75rem;
+}
+.datetime-input {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-width: 20rem;
+  font-family: inherit;
+}
+.offset-section {
+  display: grid;
+  gap: 0.4rem;
+}
+.font-bold {
+  font-weight: 600;
+}
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.chip-button {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: white;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.chip-button.active {
+  background: var(--accent, #2563eb);
+  color: white;
+  border-color: var(--accent, #2563eb);
 }
 .toolbar,
 .actions {
@@ -390,3 +524,4 @@ function save() {
   width: 100%;
 }
 </style>
+
