@@ -2,6 +2,7 @@ package com.tasker.android.ui.calendar
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tasker.android.data.model.TaskFilters
 import com.tasker.android.data.repository.NoteRepository
 import com.tasker.android.data.repository.TaskRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -63,62 +64,10 @@ class CalendarViewModel @Inject constructor(
     val uiState: StateFlow<CalendarUiState> = _uiState.asStateFlow()
 
     init {
-        combine(
-            noteRepository.observeNotes(),
-            taskRepository.observeTasks()
-        ) { notes, tasks ->
-            val map = mutableMapOf<LocalDate, MutableList<CalendarItem>>()
-            val timeFormatter = DateTimeFormatter.ofPattern("h:mm a")
-
-            for (note in notes) {
-                val remAt = note.reminderAt ?: continue
-                try {
-                    val inst = Instant.parse(remAt)
-                    val zdt = inst.atZone(ZoneId.systemDefault())
-                    val date = zdt.toLocalDate()
-                    val timeStr = timeFormatter.format(zdt)
-
-                    val item = CalendarItem.NoteReminderItem(
-                        id = "note_${note.id}",
-                        title = note.title,
-                        contentMd = note.contentMd,
-                        noteId = note.id,
-                        date = date,
-                        displayTime = timeStr,
-                    )
-                    map.getOrPut(date) { mutableListOf() }.add(item)
-                } catch (_: Exception) {}
-            }
-
-            for (task in tasks) {
-                val dueStr = task.dueDate ?: continue
-                try {
-                    val date = LocalDate.parse(dueStr)
-                    val item = CalendarItem.TaskItem(
-                        id = "task_${task.id}",
-                        title = task.title,
-                        status = task.status,
-                        priority = task.priority,
-                        taskId = task.id,
-                        date = date,
-                        displayTime = "Due Today",
-                    )
-                    map.getOrPut(date) { mutableListOf() }.add(item)
-                } catch (_: Exception) {}
-            }
-
-            map.toMap()
-        }.combine(_uiState) { itemsMap, state ->
-            val selectedItems = itemsMap[state.selectedDate] ?: emptyList()
-            state.copy(itemsByDate = itemsMap, selectedDateItems = selectedItems)
-        }.combine(_uiState) { updatedState, _ ->
-            updatedState
-        }
-
         viewModelScope.launch {
             combine(
                 noteRepository.observeNotes(),
-                taskRepository.observeTasks()
+                taskRepository.observeTasks(TaskFilters(status = "all"))
             ) { notes, tasks ->
                 val map = mutableMapOf<LocalDate, MutableList<CalendarItem>>()
                 val timeFormatter = DateTimeFormatter.ofPattern("h:mm a")
@@ -169,7 +118,6 @@ class CalendarViewModel @Inject constructor(
                     )
                 }
             }
-        }
     }
 
     fun selectDate(date: LocalDate) {

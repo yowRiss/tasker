@@ -275,7 +275,7 @@ fun NoteDetailScreen(
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (uiState.reminderAt != null) colors.accentLight else colors.accent,
+                                containerColor = if (uiState.reminderAt != null) colors.accentSubtle else colors.accent,
                                 contentColor = if (uiState.reminderAt != null) colors.accent else Color.White
                             ),
                             shape = RoundedCornerShape(8.dp)
