@@ -84,20 +84,21 @@ fun LoginScreen(
 
             Spacer(Modifier.height(4.dp))
 
-            // Offline registration notice banner in Register mode
-            if (uiState.authMode == AuthMode.REGISTER) {
-                Surface(
-                    color = colors.surfaceAlt,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = "Offline-first registration: Works even when API is down. Credentials are saved locally and synced when online.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textSecondary,
-                        modifier = Modifier.padding(10.dp),
-                    )
-                }
+            // Offline notice banner
+            Surface(
+                color = colors.surfaceAlt,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = if (uiState.authMode == AuthMode.REGISTER)
+                        "Offline-first registration: Works even when server is down. Account is created locally and synced automatically when online."
+                    else
+                        "Offline-first login: Authenticates locally using stored credentials if server is unreachable.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                    modifier = Modifier.padding(10.dp),
+                )
             }
 
             // Username field

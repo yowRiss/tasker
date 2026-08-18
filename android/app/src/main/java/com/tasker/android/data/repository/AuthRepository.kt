@@ -43,7 +43,7 @@ class AuthRepository @Inject constructor(
                 // Main API is down — attempt local offline authentication
                 if (tokenStore.verifyLocalCredential(cleanUsername, password)) {
                     val offlineUserId = tokenStore.getUserId() ?: "offline_$cleanUsername"
-                    val offlineToken = tokenStore.getToken() ?: "offline_token_${UUID.randomUUID()}"
+                    val offlineToken = "offline_token_${UUID.randomUUID()}"
                     tokenStore.saveToken(offlineToken)
                     tokenStore.saveUser(offlineUserId, cleanUsername)
                     return@runCatching
@@ -100,39 +100,58 @@ class AuthRepository @Inject constructor(
     }
 
     /**
-     * Sync pending offline registration credentials to the main API when it comes back UP.
+     * Sync pending offline registration credentials or upgrade offline sessions to online server tokens.
      */
     suspend fun syncPendingCredentials(): Result<Unit> = runCatching {
-        val pending = tokenStore.getPendingRegistration() ?: return@runCatching
-        val (username, password) = pending
+        val pending = tokenStore.getPendingRegistration()
+        if (pending != null) {
+            val (username, password) = pending
 
-        try {
-            val response = authApi.register(
-                RegisterRequest(
-                    username   = username,
-                    password   = password,
-                    rememberMe = true,
+            try {
+                val response = authApi.register(
+                    RegisterRequest(
+                        username   = username,
+                        password   = password,
+                        rememberMe = true,
+                    )
                 )
-            )
-            tokenStore.saveToken(response.token)
-            tokenStore.saveUser(response.user.id, response.user.username)
-            tokenStore.saveLocalCredential(username, password)
-            tokenStore.clearPendingRegistration()
-        } catch (e: Exception) {
-            if (e is HttpException && (e.code() == 400 || e.code() == 409)) {
-                // User may already be created on server — attempt login to get server token
-                try {
-                    val loginResp = authApi.login(LoginRequest(username, password, rememberMe = true))
-                    tokenStore.saveToken(loginResp.token)
-                    tokenStore.saveUser(loginResp.user.id, loginResp.user.username)
-                    tokenStore.saveLocalCredential(username, password)
-                    tokenStore.clearPendingRegistration()
-                } catch (_: Exception) {
-                    // Keep pending state for retry
-                }
-            } else if (!isNetworkOrServerError(e)) {
-                // Permanent failure — clear pending
+                tokenStore.saveToken(response.token)
+                tokenStore.saveUser(response.user.id, response.user.username)
+                tokenStore.saveLocalCredential(username, password)
                 tokenStore.clearPendingRegistration()
+            } catch (e: Exception) {
+                if (e is HttpException && (e.code() == 400 || e.code() == 409)) {
+                    // User may already be created on server — attempt login to get server token
+                    try {
+                        val loginResp = authApi.login(LoginRequest(username, password, rememberMe = true))
+                        tokenStore.saveToken(loginResp.token)
+                        tokenStore.saveUser(loginResp.user.id, loginResp.user.username)
+                        tokenStore.saveLocalCredential(username, password)
+                        tokenStore.clearPendingRegistration()
+                    } catch (_: Exception) {
+                        // Keep pending state for retry
+                    }
+                } else if (!isNetworkOrServerError(e)) {
+                    // Permanent failure — clear pending
+                    tokenStore.clearPendingRegistration()
+                }
+            }
+        }
+
+        // If currently in an offline session, exchange local credentials for a server token
+        if (tokenStore.isOfflineSession()) {
+            val username = tokenStore.getUsername()
+            if (!username.isNullOrBlank()) {
+                val storedPassword = tokenStore.getLocalCredential(username)
+                if (!storedPassword.isNullOrBlank()) {
+                    try {
+                        val loginResp = authApi.login(LoginRequest(username, storedPassword, rememberMe = true))
+                        tokenStore.saveToken(loginResp.token)
+                        tokenStore.saveUser(loginResp.user.id, loginResp.user.username)
+                    } catch (_: Exception) {
+                        // Will retry on next sync when API is reachable
+                    }
+                }
             }
         }
     }
@@ -149,9 +168,11 @@ class AuthRepository @Inject constructor(
 
     private fun isNetworkOrServerError(e: Throwable): Boolean {
         return e is IOException ||
+                e.cause is IOException ||
                 e is java.net.ConnectException ||
                 e is java.net.UnknownHostException ||
                 e is java.net.SocketTimeoutException ||
-                (e is HttpException && e.code() >= 500)
+                e is java.net.SocketException ||
+                (e is HttpException && (e.code() >= 500 || e.code() == 404 || e.code() == 502 || e.code() == 503 || e.code() == 504))
     }
 }

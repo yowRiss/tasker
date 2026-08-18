@@ -70,6 +70,10 @@ class TokenStore @Inject constructor(
         return storedPassword != null && storedPassword == password
     }
 
+    fun getLocalCredential(username: String): String? {
+        return prefs.getString("$PREFIX_LOCAL_CRED$username", null)
+    }
+
     fun savePendingRegistration(username: String, password: String) {
         prefs.edit()
             .putString(KEY_PENDING_REG_USERNAME, username)
