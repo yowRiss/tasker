@@ -8,8 +8,12 @@ import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import com.tasker.android.BuildConfig
-import com.tasker.android.sync.NetworkMonitor
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,10 +35,12 @@ import javax.inject.Singleton
 @Singleton
 class UpdateManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val networkMonitor: NetworkMonitor,
 ) {
     private val prefs = context.getSharedPreferences("tasker_update_prefs", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val connectivityManager =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
@@ -49,24 +55,51 @@ class UpdateManager @Inject constructor(
         .build()
 
     init {
-        // Automatically trigger update check whenever device comes online (including on Login screen)
+        // Initial check on app startup if online
         scope.launch {
-            networkMonitor.isOnline.collect { isOnline ->
-                if (isOnline) {
-                    checkForUpdates(isAutoCheck = true)
-                }
+            if (isNetworkAvailable()) {
+                checkForUpdates(isAutoCheck = true)
             }
         }
+
+        // Register NetworkCallback to trigger update check as soon as network becomes available (including Login screen)
+        try {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            connectivityManager?.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    scope.launch {
+                        checkForUpdates(isAutoCheck = true)
+                    }
+                }
+
+                override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                    if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                        scope.launch {
+                            checkForUpdates(isAutoCheck = true)
+                        }
+                    }
+                }
+            })
+        } catch (_: Exception) {}
 
         // Periodic background update check every 5 minutes while online
         scope.launch {
             while (true) {
                 delay(5 * 60 * 1000L)
-                if (networkMonitor.isOnline.value) {
+                if (isNetworkAvailable()) {
                     checkForUpdates(isAutoCheck = true)
                 }
             }
         }
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val cm = connectivityManager ?: return false
+        val activeNetwork = cm.activeNetwork ?: return false
+        val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     suspend fun checkForUpdates(isAutoCheck: Boolean = false) {
