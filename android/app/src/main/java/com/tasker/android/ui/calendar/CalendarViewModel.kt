@@ -118,6 +118,7 @@ class CalendarViewModel @Inject constructor(
                     )
                 }
             }
+        }
     }
 
     fun selectDate(date: LocalDate) {
