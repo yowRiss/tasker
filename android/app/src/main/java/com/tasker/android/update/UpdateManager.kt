@@ -123,6 +123,10 @@ class UpdateManager @Inject constructor(
 
                 if (isNewer) {
                     _updateState.value = UpdateState.UpdateAvailable(releaseInfo)
+                    if (isAutoCheck) {
+                        // Automatically start download when new release is detected
+                        startDownload()
+                    }
                 } else {
                     _updateState.value = if (isAutoCheck) UpdateState.Idle else UpdateState.UpToDate
                 }
@@ -190,6 +194,11 @@ class UpdateManager @Inject constructor(
                 inputStream.close()
 
                 _updateState.value = UpdateState.ReadyToInstall(releaseInfo, apkFile)
+
+                // Auto-launch APK installer
+                withContext(Dispatchers.Main) {
+                    installApk(apkFile)
+                }
             } catch (e: Exception) {
                 _updateState.value = UpdateState.Error("Download error: ${e.localizedMessage ?: "Unknown error"}")
             }

@@ -30,6 +30,7 @@ class SyncManager @Inject constructor(
     private val pullSync: PullSync,
     private val syncQueueDao: SyncQueueDao,
     private val authRepository: AuthRepository,
+    private val updateManager: com.tasker.android.update.UpdateManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _isSyncing = MutableStateFlow(false)
@@ -53,21 +54,32 @@ class SyncManager @Inject constructor(
     )
 
     init {
-        // Observe connectivity changes -> trigger sync on reconnect
+        // Observe connectivity changes -> trigger sync & update check on reconnect
         scope.launch {
             networkMonitor.isOnline.collect { online ->
-                if (online && !_isSyncing.value) {
-                    triggerSync()
+                if (online) {
+                    if (!_isSyncing.value) {
+                        triggerSync()
+                    }
+                    updateManager.checkForUpdates(isAutoCheck = true)
                 }
             }
         }
 
         // 60-second foreground periodic sync loop while online
         scope.launch {
+            var loopCount = 0
             while (true) {
                 delay(60_000)
-                if (networkMonitor.isOnline.value && !_isSyncing.value) {
-                    triggerSync()
+                loopCount++
+                if (networkMonitor.isOnline.value) {
+                    if (!_isSyncing.value) {
+                        triggerSync()
+                    }
+                    // Periodically check for app updates every 15 minutes
+                    if (loopCount % 15 == 0) {
+                        updateManager.checkForUpdates(isAutoCheck = true)
+                    }
                 }
             }
         }
