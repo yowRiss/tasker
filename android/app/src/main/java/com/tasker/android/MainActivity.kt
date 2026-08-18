@@ -53,4 +53,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch {
+            updateManager.checkForUpdates(isAutoCheck = true)
+        }
+    }
 }

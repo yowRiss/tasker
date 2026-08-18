@@ -9,11 +9,15 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.tasker.android.BuildConfig
-import dagger.hilt.android.qualifiers.ApplicationContext
+import com.tasker.android.sync.NetworkMonitor
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -26,9 +30,11 @@ import javax.inject.Singleton
 
 @Singleton
 class UpdateManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val networkMonitor: NetworkMonitor,
 ) {
     private val prefs = context.getSharedPreferences("tasker_update_prefs", Context.MODE_PRIVATE)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
@@ -42,8 +48,32 @@ class UpdateManager @Inject constructor(
         .followSslRedirects(true)
         .build()
 
+    init {
+        // Automatically trigger update check whenever device comes online (including on Login screen)
+        scope.launch {
+            networkMonitor.isOnline.collect { isOnline ->
+                if (isOnline) {
+                    checkForUpdates(isAutoCheck = true)
+                }
+            }
+        }
+
+        // Periodic background update check every 5 minutes while online
+        scope.launch {
+            while (true) {
+                delay(5 * 60 * 1000L)
+                if (networkMonitor.isOnline.value) {
+                    checkForUpdates(isAutoCheck = true)
+                }
+            }
+        }
+    }
+
     suspend fun checkForUpdates(isAutoCheck: Boolean = false) {
-        if (_updateState.value is UpdateState.Checking || _updateState.value is UpdateState.Downloading) {
+        if (_updateState.value is UpdateState.Checking ||
+            _updateState.value is UpdateState.Downloading ||
+            _updateState.value is UpdateState.ReadyToInstall
+        ) {
             return
         }
 
