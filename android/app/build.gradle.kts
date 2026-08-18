@@ -23,6 +23,7 @@ android {
 
         // BuildConfig fields populated from local.properties or CI env
         buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("API_BASE_URL") ?: "http://10.0.2.2:8080"}\"")
+        buildConfigField("String", "GITHUB_REPO", "\"${project.findProperty("GITHUB_REPO") ?: "yowRiss/tasker"}\"")
     }
 
     signingConfigs {

@@ -63,6 +63,9 @@ jobs:
         run: |
           mkdir -p release-apks
           find android/app/build/outputs/apk/ -name "*.apk" -exec cp {} release-apks/ \;
+          if [ -f release-apks/app-release.apk ]; then
+            cp release-apks/app-release.apk release-apks/Tasker-release.apk
+          fi
           echo "=== Built APK Artifacts ==="
           ls -lh release-apks/
 
