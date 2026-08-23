@@ -86,7 +86,7 @@ class SyncManager @Inject constructor(
     }
 
     suspend fun triggerSync() {
-        if (_isSyncing.value || !networkMonitor.isOnline.value) return
+        if (!authRepository.isLoggedIn() || _isSyncing.value || !networkMonitor.isOnline.value) return
 
         _isSyncing.value = true
         try {

@@ -10,7 +10,6 @@ import com.tasker.android.data.local.dao.NoteTagDao
 import com.tasker.android.data.local.dao.NoteTaskLinkDao
 import com.tasker.android.data.local.dao.ProjectDao
 import com.tasker.android.data.local.dao.SubtaskDao
-import com.tasker.android.data.local.dao.SyncQueueDao
 import com.tasker.android.data.local.dao.TagDao
 import com.tasker.android.data.local.dao.TaskDao
 import com.tasker.android.data.local.dao.TaskTagDao
@@ -27,6 +26,7 @@ import com.tasker.android.data.model.NoteImage
 import com.tasker.android.data.model.Tag
 import com.tasker.android.data.model.Task
 import com.tasker.android.data.model.UpdateNoteInput
+import com.tasker.android.sync.SyncOutbox
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -51,7 +51,7 @@ class NoteRepository @Inject constructor(
     private val projectDao: ProjectDao,
     private val subtaskDao: SubtaskDao,
     private val taskTagDao: TaskTagDao,
-    private val syncQueueDao: SyncQueueDao,
+    private val syncOutbox: SyncOutbox,
 ) {
     fun observeNotes(query: String = ""): Flow<List<Note>> =
         noteDao.observeNotesFiltered(query).map { noteEntities ->
@@ -111,7 +111,7 @@ class NoteRepository @Inject constructor(
             noteDao.upsert(noteEntity)
             if (noteTags.isNotEmpty()) noteTagDao.insertAll(noteTags)
             if (noteTasks.isNotEmpty()) noteTaskLinkDao.insertAll(noteTasks)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "note",
                     entityId = noteId,
@@ -158,7 +158,7 @@ class NoteRepository @Inject constructor(
                 noteTagDao.deleteForNote(id)
                 noteTagDao.insertAll(input.tagIds.map { NoteTagEntity(id, it, now) })
             }
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "note",
                     entityId = id,
@@ -174,7 +174,7 @@ class NoteRepository @Inject constructor(
         val now = Instant.now().toString()
         db.withTransaction {
             noteDao.softDelete(id, now)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "note",
                     entityId = id,
@@ -232,7 +232,7 @@ class NoteRepository @Inject constructor(
 
         db.withTransaction {
             noteImageDao.upsert(imageEntity)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "note_image",
                     entityId = imageId,
@@ -263,7 +263,7 @@ class NoteRepository @Inject constructor(
 
         db.withTransaction {
             noteImageDao.delete(imageId)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "note_image",
                     entityId = imageId,

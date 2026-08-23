@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -97,6 +98,19 @@ class TokenStore @Inject constructor(
     fun isOfflineSession(): Boolean {
         val token = getToken()
         return token != null && token.startsWith("offline_token_")
+    }
+
+    fun preserveLocalSession(): Boolean {
+        val token = getToken()
+        val userId = getUserId()
+        val username = getUsername()
+        if (token == null || userId.isNullOrBlank() || username.isNullOrBlank()) {
+            prefs.edit().remove(KEY_TOKEN).apply()
+            return false
+        }
+
+        saveToken("offline_token_${UUID.randomUUID()}")
+        return true
     }
 
     fun clear() = prefs.edit().clear().apply()

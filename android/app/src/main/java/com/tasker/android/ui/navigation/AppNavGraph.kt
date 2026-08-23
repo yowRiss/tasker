@@ -28,7 +28,7 @@ private const val NAV_ANIM_DURATION = 220
 @Composable
 fun AppNavGraph(
     navController: NavHostController = rememberNavController(),
-    startDestination: String = Screen.Login.route,
+    startDestination: String = mobileStartDestination(),
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -85,7 +85,8 @@ fun AppNavGraph(
                 LoginScreen(
                     onLoginSuccess = {
                         navController.navigate(Screen.Tasks.route) {
-                            popUpTo(Screen.Login.route) { inclusive = true }
+                            popUpTo(navController.graph.findStartDestination().id)
+                            launchSingleTop = true
                         }
                     },
                 )
@@ -171,11 +172,7 @@ fun AppNavGraph(
             // ── Settings ──────────────────────────────────────────
             composable(Screen.Settings.route) {
                 SettingsScreen(
-                    onLogout = {
-                        navController.navigate(Screen.Login.route) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    },
+                    onConnectAccount = { navController.navigate(Screen.Login.route) },
                 )
             }
         }

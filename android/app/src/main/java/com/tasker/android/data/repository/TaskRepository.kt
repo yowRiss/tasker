@@ -4,7 +4,6 @@ import androidx.room.withTransaction
 import com.tasker.android.data.local.AppDatabase
 import com.tasker.android.data.local.dao.ProjectDao
 import com.tasker.android.data.local.dao.SubtaskDao
-import com.tasker.android.data.local.dao.SyncQueueDao
 import com.tasker.android.data.local.dao.TagDao
 import com.tasker.android.data.local.dao.TaskDao
 import com.tasker.android.data.local.dao.TaskTagDao
@@ -21,6 +20,7 @@ import com.tasker.android.data.model.Tag
 import com.tasker.android.data.model.Task
 import com.tasker.android.data.model.TaskFilters
 import com.tasker.android.data.model.UpdateTaskInput
+import com.tasker.android.sync.SyncOutbox
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
@@ -43,7 +43,7 @@ class TaskRepository @Inject constructor(
     private val tagDao: TagDao,
     private val subtaskDao: SubtaskDao,
     private val taskTagDao: TaskTagDao,
-    private val syncQueueDao: SyncQueueDao,
+    private val syncOutbox: SyncOutbox,
 ) {
     private val jsonFormatter = Json { ignoreUnknownKeys = true }
 
@@ -71,7 +71,7 @@ class TaskRepository @Inject constructor(
 
         db.withTransaction {
             projectDao.upsert(entity)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "project",
                     entityId = id,
@@ -107,7 +107,7 @@ class TaskRepository @Inject constructor(
 
         db.withTransaction {
             tagDao.upsert(entity)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "tag",
                     entityId = id,
@@ -194,7 +194,7 @@ class TaskRepository @Inject constructor(
             taskDao.upsert(taskEntity)
             if (taskTags.isNotEmpty()) taskTagDao.insertAll(taskTags)
             if (subtasks.isNotEmpty()) subtaskDao.upsertAll(subtasks)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "task",
                     entityId = taskId,
@@ -271,7 +271,7 @@ class TaskRepository @Inject constructor(
                 if (newSubtasks.isNotEmpty()) subtaskDao.upsertAll(newSubtasks)
             }
 
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "task",
                     entityId = id,
@@ -296,7 +296,7 @@ class TaskRepository @Inject constructor(
 
         db.withTransaction {
             taskDao.updateCompletion(taskId, status, completedAt, now)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "task",
                     entityId = taskId,
@@ -312,7 +312,7 @@ class TaskRepository @Inject constructor(
         val now = Instant.now().toString()
         db.withTransaction {
             taskDao.softDelete(taskId, now)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "task",
                     entityId = taskId,

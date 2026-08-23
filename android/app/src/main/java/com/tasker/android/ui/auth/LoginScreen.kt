@@ -213,7 +213,7 @@ fun LoginScreen(
                     ),
                 )
                 Text(
-                    text  = "Stay signed in for 7 days",
+                    text  = "Keep server sync signed in",
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
                 )

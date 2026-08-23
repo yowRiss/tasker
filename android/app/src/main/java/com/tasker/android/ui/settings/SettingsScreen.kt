@@ -1,15 +1,11 @@
 package com.tasker.android.ui.settings
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.CloudDone
-import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Sync
@@ -31,7 +27,9 @@ import com.tasker.android.ui.theme.TaskerTheme
 import com.tasker.android.update.UpdateManager
 import com.tasker.android.update.UpdateState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -44,6 +42,8 @@ class SettingsViewModel @Inject constructor(
 
     val syncState: StateFlow<SyncState> = syncManager.syncState
     val updateState: StateFlow<UpdateState> = updateManager.updateState
+    private val _accountConnected = MutableStateFlow(authRepository.isLoggedIn())
+    val accountConnected: StateFlow<Boolean> = _accountConnected.asStateFlow()
 
     fun getUsername(): String = authRepository.getCurrentUsername() ?: "User"
 
@@ -59,20 +59,22 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun logout() {
+    fun disconnectAccount() {
         authRepository.logout()
+        _accountConnected.value = false
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onLogout: () -> Unit,
+    onConnectAccount: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val colors = TaskerTheme.colors
     val syncState by viewModel.syncState.collectAsState()
     val updateState by viewModel.updateState.collectAsState()
+    val accountConnected by viewModel.accountConnected.collectAsState()
 
     Scaffold(
         containerColor = colors.background,
@@ -92,78 +94,118 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // User Profile Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.surface)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            if (accountConnected) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
                 ) {
-                    Surface(
-                        color = colors.accentSubtle,
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier.size(48.dp)
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.Person, null, tint = colors.accent)
+                        Surface(
+                            color = colors.accentSubtle,
+                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Outlined.Person, null, tint = colors.accent)
+                            }
                         }
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text(viewModel.getUsername(), style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
-                        Text("Tasker Personal Account", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+                        Spacer(Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(viewModel.getUsername(), style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                            Text("Tasker Personal Account", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+                        }
                     }
                 }
-            }
 
-            // Sync Status Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.surface)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Sync Engine", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
-                        SyncStatusBadge(syncState = syncState, onSyncClick = viewModel::triggerManualSync)
-                    }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Sync Engine", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                            SyncStatusBadge(syncState = syncState, onSyncClick = viewModel::triggerManualSync)
+                        }
 
-                    HorizontalDivider(color = colors.border.copy(alpha = 0.5f))
+                        HorizontalDivider(color = colors.border.copy(alpha = 0.5f))
 
-                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Text("Connection Status", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
-                        Text(if (syncState.isOnline) "Connected (Online)" else "Offline Mode", style = MaterialTheme.typography.bodyMedium, color = if (syncState.isOnline) colors.success else colors.warning)
-                    }
-
-                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Text("Pending Mutations", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
-                        Text("${syncState.pendingCount} queued", style = MaterialTheme.typography.bodyMedium, color = colors.textPrimary)
-                    }
-
-                    if (syncState.failedCount > 0) {
                         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                            Text("Failed Sync Items", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
-                            Text("${syncState.failedCount} errors", style = MaterialTheme.typography.bodyMedium, color = colors.destructive)
+                            Text("Connection Status", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+                            Text(if (syncState.isOnline) "Connected (Online)" else "Offline Mode", style = MaterialTheme.typography.bodyMedium, color = if (syncState.isOnline) colors.success else colors.warning)
+                        }
+
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text("Pending Mutations", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+                            Text("${syncState.pendingCount} queued", style = MaterialTheme.typography.bodyMedium, color = colors.textPrimary)
+                        }
+
+                        if (syncState.failedCount > 0) {
+                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text("Failed Sync Items", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+                                Text("${syncState.failedCount} errors", style = MaterialTheme.typography.bodyMedium, color = colors.destructive)
+                            }
+                        }
+
+                        Button(
+                            onClick = viewModel::triggerManualSync,
+                            enabled = syncState.isOnline && !syncState.isSyncing,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.accent),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sync Now")
                         }
                     }
-
-                    Button(
-                        onClick = viewModel::triggerManualSync,
-                        enabled = syncState.isOnline && !syncState.isSyncing,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.accent),
-                        modifier = Modifier.fillMaxWidth()
+                }
+            } else {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Sync Now")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = colors.accentSubtle,
+                                shape = RoundedCornerShape(24.dp),
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Outlined.Person, null, tint = colors.accent)
+                                }
+                            }
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Local mode", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                                Text(
+                                    "No account required. Your data stays on this device.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textSecondary,
+                                )
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = onConnectAccount,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                        ) {
+                            Text("Connect account for sync")
+                        }
                     }
                 }
             }
@@ -231,18 +273,14 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Logout Button
-            OutlinedButton(
-                onClick = {
-                    viewModel.logout()
-                    onLogout()
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.destructive),
-                border = BorderStroke(1.dp, colors.destructive),
-            ) {
-                Text("Log out", style = MaterialTheme.typography.labelLarge)
+            if (accountConnected) {
+                OutlinedButton(
+                    onClick = viewModel::disconnectAccount,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("Disconnect account", style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }

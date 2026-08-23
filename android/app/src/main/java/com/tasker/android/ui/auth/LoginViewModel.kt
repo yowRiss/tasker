@@ -22,7 +22,7 @@ data class LoginUiState(
     val username: String = "",
     val password: String = "",
     val confirmPassword: String = "",
-    val rememberMe: Boolean = false,
+    val rememberMe: Boolean = true,
     val isLoading: Boolean = false,
     val isLoggedIn: Boolean = false,
     val errorMessage: String? = null,

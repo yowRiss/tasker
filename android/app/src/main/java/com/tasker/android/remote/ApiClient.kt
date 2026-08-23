@@ -17,7 +17,7 @@ import javax.inject.Singleton
 
 /**
  * Auth interceptor — attaches Bearer token to every request.
- * On 401: clears the token and posts a logout event via [AuthEventBus].
+ * On 401: preserves the existing device session for offline use and automatic renewal.
  */
 @Singleton
 class AuthInterceptor @Inject constructor(
@@ -35,8 +35,9 @@ class AuthInterceptor @Inject constructor(
 
         val response = chain.proceed(requestBuilder.build())
         if (response.code == 401 && !isOfflineToken && tokenStore.getPendingRegistration() == null) {
-            tokenStore.clear()
-            authEventBus.postLogout()
+            if (!tokenStore.preserveLocalSession()) {
+                authEventBus.postLogout()
+            }
         }
         return response
     }
