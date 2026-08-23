@@ -8,7 +8,6 @@ import com.tasker.android.data.local.dao.AccountDao
 import com.tasker.android.data.local.dao.BudgetDao
 import com.tasker.android.data.local.dao.CategoryDao
 import com.tasker.android.data.local.dao.RecurringDao
-import com.tasker.android.data.local.dao.SyncQueueDao
 import com.tasker.android.data.local.dao.TransactionDao
 import com.tasker.android.data.local.dao.TransactionReceiptDao
 import com.tasker.android.data.local.entity.AccountEntity
@@ -22,11 +21,13 @@ import com.tasker.android.data.model.Account
 import com.tasker.android.data.model.Budget
 import com.tasker.android.data.model.Category
 import com.tasker.android.data.model.CategorySpendItem
+import com.tasker.android.data.model.CreateRecurringInput
 import com.tasker.android.data.model.CreateTransactionInput
 import com.tasker.android.data.model.MoneyDashboardData
 import com.tasker.android.data.model.RecurringTransaction
 import com.tasker.android.data.model.Transaction
 import com.tasker.android.data.model.TransactionReceipt
+import com.tasker.android.sync.SyncOutbox
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -49,7 +50,7 @@ class MoneyRepository @Inject constructor(
     private val receiptDao: TransactionReceiptDao,
     private val budgetDao: BudgetDao,
     private val recurringDao: RecurringDao,
-    private val syncQueueDao: SyncQueueDao,
+    private val syncOutbox: SyncOutbox,
 ) {
 
     // ── Accounts ───────────────────────────────────────────────────
@@ -95,7 +96,7 @@ class MoneyRepository @Inject constructor(
 
         db.withTransaction {
             accountDao.upsert(entity)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "account",
                     entityId = id,
@@ -132,7 +133,7 @@ class MoneyRepository @Inject constructor(
 
         db.withTransaction {
             categoryDao.upsert(entity)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "category",
                     entityId = id,
@@ -184,14 +185,14 @@ class MoneyRepository @Inject constructor(
             put("amount", input.amount.toString())
             put("transaction_date", input.transactionDate)
             put("account_id", input.accountId)
-            if (input.transferAccountId != null) put("transfer_account_id", input.transferAccountId)
-            if (input.categoryId != null) put("category_id", input.categoryId)
-            if (input.description != null) put("description", input.description.trim())
+            put("transfer_account_id", input.transferAccountId)
+            put("category_id", input.categoryId)
+            put("description", input.description?.trim())
         }.toString()
 
         db.withTransaction {
             transactionDao.upsert(entity)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "transaction",
                     entityId = id,
@@ -208,11 +209,59 @@ class MoneyRepository @Inject constructor(
         return entity.toDomain(account, transferAccount, category, null)
     }
 
+    suspend fun getTransaction(id: String): Transaction? {
+        val entity = transactionDao.getById(id) ?: return null
+        val account = accountDao.getById(entity.accountId)?.toDomain(0.0)
+        val transferAccount = entity.transferAccountId?.let { accountDao.getById(it)?.toDomain(0.0) }
+        val category = entity.categoryId?.let { categoryDao.getById(it)?.toDomain() }
+        val receipt = receiptDao.getForTransaction(entity.id)?.toDomain()
+        return entity.toDomain(account, transferAccount, category, receipt)
+    }
+
+    suspend fun updateTransaction(id: String, input: CreateTransactionInput): Transaction {
+        val existing = transactionDao.getById(id) ?: error("Transaction not found")
+        val now = Instant.now().toString()
+        val entity = existing.copy(
+            transactionType = input.transactionType,
+            amount = input.amount,
+            transactionDate = input.transactionDate,
+            accountId = input.accountId,
+            transferAccountId = input.transferAccountId,
+            categoryId = input.categoryId,
+            description = input.description?.trim(),
+            updatedAt = now,
+        )
+        val payload = buildJsonObject {
+            put("transaction_type", input.transactionType)
+            put("amount", input.amount.toString())
+            put("transaction_date", input.transactionDate)
+            put("account_id", input.accountId)
+            put("transfer_account_id", input.transferAccountId)
+            put("category_id", input.categoryId)
+            put("description", input.description?.trim())
+        }.toString()
+
+        db.withTransaction {
+            transactionDao.upsert(entity)
+            syncOutbox.enqueue(
+                SyncQueueEntity(
+                    entityType = "transaction",
+                    entityId = id,
+                    operation = "UPDATE",
+                    payload = payload,
+                    createdAt = now,
+                )
+            )
+        }
+
+        return getTransaction(id) ?: error("Updated transaction not found")
+    }
+
     suspend fun deleteTransaction(id: String) {
         val now = Instant.now().toString()
         db.withTransaction {
             transactionDao.softDelete(id, now)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "transaction",
                     entityId = id,
@@ -256,7 +305,7 @@ class MoneyRepository @Inject constructor(
 
         db.withTransaction {
             receiptDao.upsert(entity)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "transaction_receipt",
                     entityId = receiptId,
@@ -314,7 +363,7 @@ class MoneyRepository @Inject constructor(
 
         db.withTransaction {
             budgetDao.upsert(entity)
-            syncQueueDao.enqueue(
+            syncOutbox.enqueue(
                 SyncQueueEntity(
                     entityType = "budget",
                     entityId = id,
@@ -329,6 +378,22 @@ class MoneyRepository @Inject constructor(
         return entity.toDomain(category, 0.0, amountLimit, 0.0, false)
     }
 
+    suspend fun deleteBudget(id: String) {
+        val now = Instant.now().toString()
+        db.withTransaction {
+            budgetDao.softDelete(id, now)
+            syncOutbox.enqueue(
+                SyncQueueEntity(
+                    entityType = "budget",
+                    entityId = id,
+                    operation = "DELETE",
+                    payload = "{}",
+                    createdAt = now,
+                )
+            )
+        }
+    }
+
     // ── Recurring ──────────────────────────────────────────────────
 
     fun observeRecurring(): Flow<List<RecurringTransaction>> =
@@ -339,6 +404,68 @@ class MoneyRepository @Inject constructor(
                 entity.toDomain(account, category)
             }
         }
+
+    suspend fun createRecurring(input: CreateRecurringInput): RecurringTransaction {
+        val id = UUID.randomUUID().toString()
+        val now = Instant.now().toString()
+        val entity = RecurringTransactionEntity(
+            id = id,
+            transactionType = input.transactionType,
+            amount = input.amount,
+            accountId = input.accountId,
+            categoryId = input.categoryId,
+            description = input.description?.trim(),
+            cadence = input.cadence,
+            nextDueDate = input.nextDueDate,
+            endsOn = input.endsOn,
+            createdAt = now,
+            updatedAt = now,
+        )
+        val payload = buildJsonObject {
+            put("transaction_type", input.transactionType)
+            put("amount", input.amount.toString())
+            put("account_id", input.accountId)
+            put("category_id", input.categoryId)
+            if (input.description != null) put("description", input.description.trim())
+            put("cadence", input.cadence)
+            put("next_due_date", input.nextDueDate)
+            if (input.endsOn != null) put("ends_on", input.endsOn)
+            put("is_active", true)
+        }.toString()
+
+        db.withTransaction {
+            recurringDao.upsert(entity)
+            syncOutbox.enqueue(
+                SyncQueueEntity(
+                    entityType = "recurring_transaction",
+                    entityId = id,
+                    operation = "CREATE",
+                    payload = payload,
+                    createdAt = now,
+                )
+            )
+        }
+
+        val account = accountDao.getById(input.accountId)?.toDomain(0.0)
+        val category = categoryDao.getById(input.categoryId)?.toDomain()
+        return entity.toDomain(account, category)
+    }
+
+    suspend fun deleteRecurring(id: String) {
+        val now = Instant.now().toString()
+        db.withTransaction {
+            recurringDao.softDelete(id, now)
+            syncOutbox.enqueue(
+                SyncQueueEntity(
+                    entityType = "recurring_transaction",
+                    entityId = id,
+                    operation = "DELETE",
+                    payload = "{}",
+                    createdAt = now,
+                )
+            )
+        }
+    }
 
     // ── Mappers ────────────────────────────────────────────────────
 

@@ -148,3 +148,22 @@ data class RecurringDto(
     @SerialName("updated_at")
     val updatedAt: String,
 )
+
+@Serializable
+data class RecurringCreateRequest(
+    @SerialName("transaction_type")
+    val transactionType: String,
+    val amount: String,
+    @SerialName("account_id")
+    val accountId: String,
+    @SerialName("category_id")
+    val categoryId: String,
+    val description: String? = null,
+    val cadence: String,
+    @SerialName("next_due_date")
+    val nextDueDate: String,
+    @SerialName("ends_on")
+    val endsOn: String? = null,
+    @SerialName("is_active")
+    val isActive: Boolean = true,
+)

@@ -87,6 +87,9 @@ data class MoneyDashboardData(
     val totalBalance: Double = 0.0,
     val totalIncome: Double = 0.0,
     val totalExpense: Double = 0.0,
+    val netCashFlow: Double = 0.0,
+    val transactionCount: Int = 0,
+    val periodLabel: String = "All time",
     val categorySpend: List<CategorySpendItem> = emptyList(),
 )
 
@@ -104,4 +107,15 @@ data class CreateTransactionInput(
     val transferAccountId: String? = null,
     val categoryId: String? = null,
     val description: String? = null,
+)
+
+data class CreateRecurringInput(
+    val transactionType: String,
+    val amount: Double,
+    val accountId: String,
+    val categoryId: String,
+    val description: String? = null,
+    val cadence: String,
+    val nextDueDate: String,
+    val endsOn: String? = null,
 )

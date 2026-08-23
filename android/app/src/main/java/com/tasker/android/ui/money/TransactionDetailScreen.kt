@@ -136,6 +136,17 @@ fun TransactionDetailScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            OutlinedTextField(
+                value = uiState.transactionDate,
+                onValueChange = viewModel::onDateChange,
+                label = { Text("Date (YYYY-MM-DD) *") },
+                supportingText = { Text("Use a date such as ${java.time.LocalDate.now()}") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = taskerOutlinedTextFieldColors(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
             // Account Selector
             Text("Account *", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -220,7 +231,11 @@ fun TransactionDetailScreen(
                 if (uiState.isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
                 } else {
-                    Text("Save Transaction", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    Text(
+                        if (uiState.isEditing) "Update Transaction" else "Save Transaction",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White,
+                    )
                 }
             }
         }

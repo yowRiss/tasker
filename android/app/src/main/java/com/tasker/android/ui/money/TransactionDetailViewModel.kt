@@ -1,6 +1,7 @@
 package com.tasker.android.ui.money
 
 import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tasker.android.data.model.Account
@@ -28,6 +29,8 @@ data class TransactionDetailUiState(
     val categoryId: String? = null,
     val description: String = "",
     val receiptUri: Uri? = null,
+    val shouldAttachReceipt: Boolean = false,
+    val isEditing: Boolean = false,
     val isSaved: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
@@ -36,9 +39,13 @@ data class TransactionDetailUiState(
 @HiltViewModel
 class TransactionDetailViewModel @Inject constructor(
     private val moneyRepository: MoneyRepository,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(TransactionDetailUiState())
+    private val requestedTransactionId = savedStateHandle.get<String>("txId")?.takeIf { it.isNotBlank() }
+    private val _uiState = MutableStateFlow(
+        TransactionDetailUiState(isLoading = requestedTransactionId != null)
+    )
     val uiState: StateFlow<TransactionDetailUiState> = _uiState.asStateFlow()
 
     val accounts: StateFlow<List<Account>> = moneyRepository.observeAccounts()
@@ -47,14 +54,48 @@ class TransactionDetailViewModel @Inject constructor(
     val categories: StateFlow<List<Category>> = moneyRepository.observeCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun onTypeChange(type: String) = _uiState.update { it.copy(transactionType = type) }
+    init {
+        requestedTransactionId?.let(::loadTransaction)
+    }
+
+    fun onTypeChange(type: String) = _uiState.update {
+        it.copy(
+            transactionType = type,
+            transferAccountId = if (type == "transfer") it.transferAccountId else null,
+            categoryId = if (type == "transfer") null else it.categoryId,
+            errorMessage = null,
+        )
+    }
     fun onAmountChange(value: String) = _uiState.update { it.copy(amountText = value, errorMessage = null) }
-    fun onDateChange(value: String) = _uiState.update { it.copy(transactionDate = value) }
+    fun onDateChange(value: String) = _uiState.update { it.copy(transactionDate = value, errorMessage = null) }
     fun onAccountChange(id: String) = _uiState.update { it.copy(accountId = id) }
     fun onTransferAccountChange(id: String) = _uiState.update { it.copy(transferAccountId = id) }
     fun onCategoryChange(id: String) = _uiState.update { it.copy(categoryId = id) }
     fun onDescriptionChange(value: String) = _uiState.update { it.copy(description = value) }
-    fun attachReceipt(uri: Uri) = _uiState.update { it.copy(receiptUri = uri) }
+    fun attachReceipt(uri: Uri) = _uiState.update { it.copy(receiptUri = uri, shouldAttachReceipt = true) }
+
+    private fun loadTransaction(id: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            val transaction = moneyRepository.getTransaction(id)
+            if (transaction == null) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Transaction not found") }
+                return@launch
+            }
+            _uiState.value = TransactionDetailUiState(
+                txId = transaction.id,
+                transactionType = transaction.transactionType,
+                amountText = transaction.amount.toString(),
+                transactionDate = transaction.transactionDate,
+                accountId = transaction.accountId,
+                transferAccountId = transaction.transferAccountId,
+                categoryId = transaction.categoryId,
+                description = transaction.description.orEmpty(),
+                receiptUri = transaction.receipt?.localUri?.let(Uri::parse),
+                isEditing = true,
+            )
+        }
+    }
 
     fun saveTransaction() {
         val state = _uiState.value
@@ -67,27 +108,45 @@ class TransactionDetailViewModel @Inject constructor(
             _uiState.update { it.copy(errorMessage = "Account is required") }
             return
         }
+        if (runCatching { LocalDate.parse(state.transactionDate) }.isFailure) {
+            _uiState.update { it.copy(errorMessage = "Date must use YYYY-MM-DD format") }
+            return
+        }
+        if (state.transactionType == "transfer" &&
+            (state.transferAccountId == null || state.transferAccountId == state.accountId)
+        ) {
+            _uiState.update { it.copy(errorMessage = "Choose a different destination account") }
+            return
+        }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            val created = moneyRepository.createTransaction(
-                CreateTransactionInput(
+            val input = CreateTransactionInput(
                     transactionType = state.transactionType,
                     amount = amount,
                     transactionDate = state.transactionDate,
                     accountId = state.accountId,
                     transferAccountId = state.transferAccountId,
                     categoryId = state.categoryId,
-                    description = state.description.ifBlank { null }
+                    description = state.description.ifBlank { null },
                 )
-            )
+            runCatching {
+                val saved = if (state.txId == null) {
+                    moneyRepository.createTransaction(input)
+                } else {
+                    moneyRepository.updateTransaction(state.txId, input)
+                }
 
-            // Attach receipt if selected
-            if (state.receiptUri != null) {
-                moneyRepository.attachReceipt(created.id, state.receiptUri)
+                if (state.shouldAttachReceipt && state.receiptUri != null) {
+                    moneyRepository.attachReceipt(saved.id, state.receiptUri)
+                }
+            }.onSuccess {
+                _uiState.update { it.copy(isLoading = false, isSaved = true) }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(isLoading = false, errorMessage = error.message ?: "Could not save transaction")
+                }
             }
-
-            _uiState.update { it.copy(isLoading = false, isSaved = true) }
         }
     }
 }

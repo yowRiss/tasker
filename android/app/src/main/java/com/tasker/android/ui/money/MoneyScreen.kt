@@ -1,38 +1,28 @@
 package com.tasker.android.ui.money
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
-import androidx.compose.material.icons.outlined.Category
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Receipt
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.tasker.android.data.model.Account
-import com.tasker.android.data.model.CategorySpendItem
 import com.tasker.android.data.model.Transaction
 import com.tasker.android.ui.navigation.Screen
 import com.tasker.android.ui.theme.TaskerTheme
-import java.text.NumberFormat
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,11 +32,14 @@ fun MoneyScreen(
 ) {
     val colors = TaskerTheme.colors
     val accounts by viewModel.accounts.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
     val dashboardData by viewModel.dashboardData.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
 
     var showNewAccountDialog by remember { mutableStateOf(false) }
+    var showNewCategoryDialog by remember { mutableStateOf(false) }
+    var transactionPendingDelete by remember { mutableStateOf<Transaction?>(null) }
 
     Scaffold(
         containerColor = colors.background,
@@ -98,29 +91,64 @@ fun MoneyScreen(
                             style = MaterialTheme.typography.headlineMedium,
                             color = colors.textPrimary
                         )
+                        Text(
+                            text = "${dashboardData.periodLabel} cash flow • ${dashboardData.transactionCount} transactions",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textSecondary,
+                        )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.ArrowUpward, null, tint = colors.success, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Column {
-                                    Text("Income", style = MaterialTheme.typography.labelSmall, color = colors.textTertiary)
-                                    Text(formatCurrency(dashboardData.totalIncome), style = MaterialTheme.typography.titleSmall, color = colors.success)
-                                }
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.ArrowDownward, null, tint = colors.destructive, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Column {
-                                    Text("Expenses", style = MaterialTheme.typography.labelSmall, color = colors.textTertiary)
-                                    Text(formatCurrency(dashboardData.totalExpense), style = MaterialTheme.typography.titleSmall, color = colors.destructive)
-                                }
-                            }
+                            SummaryMetric(
+                                label = "Income",
+                                amount = dashboardData.totalIncome,
+                                color = colors.success,
+                                icon = { Icon(Icons.Outlined.ArrowUpward, null, tint = colors.success, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier.weight(1f),
+                            )
+                            SummaryMetric(
+                                label = "Expenses",
+                                amount = dashboardData.totalExpense,
+                                color = colors.destructive,
+                                icon = { Icon(Icons.Outlined.ArrowDownward, null, tint = colors.destructive, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        val cashFlowColor = if (dashboardData.netCashFlow >= 0) colors.success else colors.destructive
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("Net cash flow", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+                            Text(
+                                text = formatSignedCurrency(dashboardData.netCashFlow),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = cashFlowColor,
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Reporting period", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(MoneyPeriod.entries) { period ->
+                            FilterChip(
+                                selected = uiState.selectedPeriod == period,
+                                onClick = { viewModel.filterByPeriod(period) },
+                                label = { Text(period.label) },
+                                colors = filterChipColors(),
+                            )
                         }
                     }
                 }
@@ -161,6 +189,37 @@ fun MoneyScreen(
             }
 
             // Category Spend Canvas Bar Chart
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Categories", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                        TextButton(onClick = { showNewCategoryDialog = true }) {
+                            Text("+ New Category", color = colors.accent)
+                        }
+                    }
+                    if (categories.isEmpty()) {
+                        Text(
+                            "Add income and expense categories to organize transactions and budgets.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textTertiary,
+                        )
+                    } else {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(categories) { category ->
+                                AssistChip(
+                                    onClick = { viewModel.filterByCategory(category.id) },
+                                    label = { Text(category.name) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             if (dashboardData.categorySpend.isNotEmpty()) {
                 item {
                     Text("Category Spending", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
@@ -181,19 +240,47 @@ fun MoneyScreen(
 
             // Transactions Header
             item {
-                Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Transactions", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                OutlinedTextField(
+                    value = uiState.query,
+                    onValueChange = viewModel::updateQuery,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Search transactions") },
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                    trailingIcon = if (uiState.query.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { viewModel.updateQuery("") }) {
+                                Icon(Icons.Outlined.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                )
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Transactions", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                        if (uiState.hasTransactionFilters) {
+                            TextButton(onClick = viewModel::clearTransactionFilters) {
+                                Text("Clear filters", color = colors.accent)
+                            }
+                        }
+                    }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         item {
                             FilterChip(
                                 selected = uiState.selectedType == null,
                                 onClick = { viewModel.filterByType(null) },
-                                label = { Text("All") },
-                                colors = filterChipColors()
+                                label = { Text("All types") },
+                                colors = filterChipColors(),
                             )
                         }
                         item {
@@ -201,7 +288,7 @@ fun MoneyScreen(
                                 selected = uiState.selectedType == "income",
                                 onClick = { viewModel.filterByType("income") },
                                 label = { Text("Income") },
-                                colors = filterChipColors()
+                                colors = filterChipColors(),
                             )
                         }
                         item {
@@ -209,29 +296,105 @@ fun MoneyScreen(
                                 selected = uiState.selectedType == "expense",
                                 onClick = { viewModel.filterByType("expense") },
                                 label = { Text("Expense") },
-                                colors = filterChipColors()
+                                colors = filterChipColors(),
                             )
+                        }
+                        item {
+                            FilterChip(
+                                selected = uiState.selectedType == "transfer",
+                                onClick = { viewModel.filterByType("transfer") },
+                                label = { Text("Transfer") },
+                                colors = filterChipColors(),
+                            )
+                        }
+                    }
+
+                    if (categories.isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item {
+                                FilterChip(
+                                    selected = uiState.selectedCategoryId == null,
+                                    onClick = { viewModel.filterByCategory(null) },
+                                    label = { Text("All categories") },
+                                    colors = filterChipColors(),
+                                )
+                            }
+                            items(categories) { category ->
+                                FilterChip(
+                                    selected = uiState.selectedCategoryId == category.id,
+                                    onClick = {
+                                        viewModel.filterByCategory(
+                                            if (uiState.selectedCategoryId == category.id) null else category.id
+                                        )
+                                    },
+                                    label = { Text(category.name) },
+                                    colors = filterChipColors(),
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            // Transaction List
             if (transactions.isEmpty()) {
                 item {
-                    Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                        Text("No transactions found", style = MaterialTheme.typography.bodyMedium, color = colors.textTertiary)
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("No matching transactions", style = MaterialTheme.typography.titleMedium, color = colors.textSecondary)
+                        Text(
+                            "Try another period or clear the transaction filters.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textTertiary,
+                        )
+                        if (uiState.hasTransactionFilters) {
+                            TextButton(onClick = viewModel::clearTransactionFilters) {
+                                Text("Clear filters", color = colors.accent)
+                            }
+                        }
                     }
                 }
             } else {
-                items(transactions, key = { it.id }) { tx ->
+                itemsIndexed(transactions, key = { _, transaction -> transaction.id }) { index, transaction ->
+                    if (index == 0 || transactions[index - 1].transactionDate != transaction.transactionDate) {
+                        Text(
+                            text = formatTransactionDate(transaction.transactionDate),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.textSecondary,
+                            modifier = Modifier.padding(top = if (index == 0) 0.dp else 8.dp),
+                        )
+                    }
                     TransactionCard(
-                        transaction = tx,
-                        onDelete = { viewModel.deleteTransaction(tx.id) }
+                        transaction = transaction,
+                        onClick = { onNavigate(Screen.TransactionDetail.route(transaction.id)) },
+                        onDelete = { transactionPendingDelete = transaction },
                     )
                 }
             }
         }
+    }
+
+    transactionPendingDelete?.let { transaction ->
+        AlertDialog(
+            onDismissRequest = { transactionPendingDelete = null },
+            title = { Text("Delete transaction?") },
+            text = { Text("This removes ${transaction.description ?: formatCurrency(transaction.amount)} from your local history.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteTransaction(transaction.id)
+                        transactionPendingDelete = null
+                    },
+                ) {
+                    Text("Delete", color = colors.destructive)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { transactionPendingDelete = null }) { Text("Cancel") }
+            },
+        )
     }
 
     // Dialog: New Account
@@ -250,8 +413,8 @@ fun MoneyScreen(
                         singleLine = true
                     )
                     Text("Type", style = MaterialTheme.typography.labelMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("bank", "cash", "e_wallet", "credit_card").forEach { type ->
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(listOf("bank", "cash", "e_wallet", "credit_card")) { type ->
                             FilterChip(
                                 selected = accType == type,
                                 onClick = { accType = type },
@@ -263,147 +426,58 @@ fun MoneyScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.createAccount(accName, accType)
-                    showNewAccountDialog = false
-                }) { Text("Create", color = colors.accent) }
+                TextButton(
+                    enabled = accName.isNotBlank(),
+                    onClick = {
+                        viewModel.createAccount(accName, accType)
+                        showNewAccountDialog = false
+                    },
+                ) { Text("Create") }
             },
             dismissButton = {
                 TextButton(onClick = { showNewAccountDialog = false }) { Text("Cancel") }
             }
         )
     }
-}
 
-@Composable
-private fun TransactionCard(
-    transaction: Transaction,
-    onDelete: () -> Unit,
-) {
-    val colors = TaskerTheme.colors
-    val (txColor, txSign) = when (transaction.transactionType) {
-        "income" -> colors.success to "+"
-        "expense" -> colors.destructive to "-"
-        else -> colors.textPrimary to ""
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = colors.surface)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = when (transaction.transactionType) {
-                    "income" -> Icons.Outlined.ArrowUpward
-                    "expense" -> Icons.Outlined.ArrowDownward
-                    else -> Icons.Outlined.AccountBalance
-                },
-                contentDescription = null,
-                tint = txColor,
-                modifier = Modifier.size(24.dp)
-            )
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = transaction.description ?: transaction.category?.name ?: transaction.transactionType.capitalize(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${transaction.account?.name ?: "Account"} • ${transaction.transactionDate}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textTertiary
-                )
-            }
-
-            if (transaction.receipt != null) {
-                Icon(
-                    Icons.Outlined.Receipt,
-                    contentDescription = "Receipt attached",
-                    tint = colors.accent,
-                    modifier = Modifier.size(16.dp).padding(end = 4.dp)
-                )
-            }
-
-            Text(
-                text = "$txSign${formatCurrency(transaction.amount)}",
-                style = MaterialTheme.typography.titleMedium,
-                color = txColor
-            )
-
-            IconButton(onClick = onDelete, modifier = Modifier.size(24.dp).padding(start = 4.dp)) {
-                Icon(Icons.Outlined.Delete, "Delete", tint = colors.textTertiary.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun CategorySpendCanvasChart(
-    items: List<CategorySpendItem>,
-    accentColor: Color
-) {
-    val colors = TaskerTheme.colors
-    val maxAmount = items.maxOfOrNull { it.amount } ?: 1.0
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items.take(5).forEach { item ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = item.categoryName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textSecondary,
-                    modifier = Modifier.width(90.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.width(8.dp))
-                Canvas(modifier = Modifier.weight(1f).height(12.dp)) {
-                    val progress = (item.amount / maxAmount).toFloat().coerceIn(0f, 1f)
-                    drawRoundRect(
-                        color = colors.surfaceAlt,
-                        size = Size(size.width, size.height),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
+    if (showNewCategoryDialog) {
+        var categoryName by remember { mutableStateOf("") }
+        var categoryType by remember { mutableStateOf("expense") }
+        AlertDialog(
+            onDismissRequest = { showNewCategoryDialog = false },
+            title = { Text("New category") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = categoryName,
+                        onValueChange = { categoryName = it },
+                        label = { Text("Category name") },
+                        singleLine = true,
                     )
-                    drawRoundRect(
-                        color = accentColor,
-                        size = Size(size.width * progress, size.height),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
-                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(listOf("expense", "income")) { type ->
+                            FilterChip(
+                                selected = categoryType == type,
+                                onClick = { categoryType = type },
+                                label = { Text(type.capitalizeLabel()) },
+                                colors = filterChipColors(),
+                            )
+                        }
+                    }
                 }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = formatCurrency(item.amount),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.textPrimary
-                )
-            }
-        }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = categoryName.isNotBlank(),
+                    onClick = {
+                        viewModel.createCategory(categoryName, categoryType)
+                        showNewCategoryDialog = false
+                    },
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewCategoryDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 }
-
-private fun formatCurrency(amount: Double): String {
-    val formatter = NumberFormat.getCurrencyInstance(Locale("id", "ID"))
-    return formatter.format(amount)
-}
-
-@Composable
-private fun filterChipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = TaskerTheme.colors.accentSubtle,
-    selectedLabelColor = TaskerTheme.colors.accent,
-    containerColor = TaskerTheme.colors.surfaceAlt,
-    labelColor = TaskerTheme.colors.textSecondary
-)
-
-private fun String.capitalize(): String = replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }

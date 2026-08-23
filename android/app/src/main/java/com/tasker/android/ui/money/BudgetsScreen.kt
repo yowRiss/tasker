@@ -55,6 +55,10 @@ class BudgetsViewModel @Inject constructor(
             moneyRepository.createBudget(categoryId, start, end, amountLimit)
         }
     }
+
+    fun deleteBudget(id: String) {
+        viewModelScope.launch { moneyRepository.deleteBudget(id) }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +71,7 @@ fun BudgetsScreen(
     val budgets by viewModel.budgets.collectAsState()
     val categories by viewModel.categories.collectAsState()
     var showNewBudgetDialog by remember { mutableStateOf(false) }
+    var budgetPendingDelete by remember { mutableStateOf<Budget?>(null) }
 
     Scaffold(
         containerColor = colors.background,
@@ -107,13 +112,25 @@ fun BudgetsScreen(
                             colors = CardDefaults.cardColors(containerColor = colors.surface)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text(budget.category?.name ?: "Budget", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        budget.category?.name ?: "Budget",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = colors.textPrimary,
+                                        modifier = Modifier.weight(1f),
+                                    )
                                     Text(
                                         text = if (budget.isOverBudget) "Over Budget" else "${budget.percentUsed.toInt()}%",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = if (budget.isOverBudget) colors.destructive else colors.accent
                                     )
+                                    IconButton(onClick = { budgetPendingDelete = budget }) {
+                                        Icon(Icons.Outlined.Delete, "Delete budget", tint = colors.textTertiary)
+                                    }
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 LinearProgressIndicator(
@@ -135,9 +152,36 @@ fun BudgetsScreen(
         }
     }
 
+    budgetPendingDelete?.let { budget ->
+        AlertDialog(
+            onDismissRequest = { budgetPendingDelete = null },
+            title = { Text("Delete budget?") },
+            text = { Text("This removes the ${budget.category?.name ?: "selected"} budget. Your transactions are kept.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteBudget(budget.id)
+                        budgetPendingDelete = null
+                    },
+                ) { Text("Delete", color = colors.destructive) }
+            },
+            dismissButton = {
+                TextButton(onClick = { budgetPendingDelete = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     if (showNewBudgetDialog) {
-        var selectedCatId by remember { mutableStateOf(categories.firstOrNull()?.id ?: "") }
+        val expenseCategories = categories.filter { it.categoryType == "expense" }
+        var selectedCatId by remember { mutableStateOf(expenseCategories.firstOrNull()?.id.orEmpty()) }
         var limitText by remember { mutableStateOf("") }
+        val limit = limitText.toDoubleOrNull()
+
+        LaunchedEffect(expenseCategories) {
+            if (expenseCategories.none { it.id == selectedCatId }) {
+                selectedCatId = expenseCategories.firstOrNull()?.id.orEmpty()
+            }
+        }
 
         AlertDialog(
             onDismissRequest = { showNewBudgetDialog = false },
@@ -146,7 +190,7 @@ fun BudgetsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Select Category", style = MaterialTheme.typography.labelMedium)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        items(categories.filter { it.categoryType == "expense" }) { cat ->
+                        items(expenseCategories) { cat ->
                             FilterChip(
                                 selected = selectedCatId == cat.id,
                                 onClick = { selectedCatId = cat.id },
@@ -164,13 +208,13 @@ fun BudgetsScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val limit = limitText.toDoubleOrNull()
-                    if (selectedCatId.isNotBlank() && limit != null && limit > 0) {
-                        viewModel.createBudget(selectedCatId, limit)
+                TextButton(
+                    enabled = selectedCatId.isNotBlank() && limit != null && limit > 0,
+                    onClick = {
+                        viewModel.createBudget(selectedCatId, requireNotNull(limit))
                         showNewBudgetDialog = false
-                    }
-                }) { Text("Create", color = colors.accent) }
+                    },
+                ) { Text("Create") }
             },
             dismissButton = { TextButton(onClick = { showNewBudgetDialog = false }) { Text("Cancel") } }
         )

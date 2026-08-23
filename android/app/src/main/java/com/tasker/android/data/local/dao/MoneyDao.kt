@@ -108,6 +108,9 @@ interface BudgetDao {
 
     @Query("UPDATE budgets SET is_deleted = 1, updated_at = :now WHERE id = :id")
     suspend fun softDelete(id: String, now: String)
+
+    @Query("UPDATE budgets SET id = :newId WHERE id = :oldId")
+    suspend fun remapId(oldId: String, newId: String)
 }
 
 @Dao
@@ -123,4 +126,7 @@ interface RecurringDao {
 
     @Query("UPDATE recurring_transactions SET is_deleted = 1, updated_at = :now WHERE id = :id")
     suspend fun softDelete(id: String, now: String)
+
+    @Query("UPDATE recurring_transactions SET id = :newId WHERE id = :oldId")
+    suspend fun remapId(oldId: String, newId: String)
 }

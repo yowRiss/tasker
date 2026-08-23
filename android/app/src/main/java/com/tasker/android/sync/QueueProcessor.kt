@@ -2,7 +2,6 @@ package com.tasker.android.sync
 
 import com.tasker.android.data.local.dao.NoteImageDao
 import com.tasker.android.data.local.dao.SyncQueueDao
-import com.tasker.android.remote.AuthEventBus
 import com.tasker.android.remote.api.MoneyApi
 import com.tasker.android.remote.api.NoteApi
 import com.tasker.android.remote.api.TaskApi
@@ -13,11 +12,13 @@ import com.tasker.android.remote.dto.CompletionRequest
 import com.tasker.android.remote.dto.NoteCreateRequest
 import com.tasker.android.remote.dto.NoteUpdateRequest
 import com.tasker.android.remote.dto.ProjectCreateRequest
+import com.tasker.android.remote.dto.RecurringCreateRequest
 import com.tasker.android.remote.dto.TagCreateRequest
 import com.tasker.android.remote.dto.TaskCreateRequest
 import com.tasker.android.remote.dto.TaskUpdateRequest
 import com.tasker.android.remote.dto.TransactionCreateRequest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 // asConfigFile does not exist — asRequestBody (line below) is the correct extension
@@ -47,7 +48,6 @@ class QueueProcessor @Inject constructor(
     private val moneyApi: MoneyApi,
     private val noteImageDao: NoteImageDao,
     private val idRemapper: IdRemapper,
-    private val authEventBus: AuthEventBus,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -71,7 +71,6 @@ class QueueProcessor @Inject constructor(
                 when {
                     e.code() == 401 -> {
                         syncQueueDao.updateStatus(item.id, "pending", e.message)
-                        authEventBus.postLogout()
                         return QueueProcessorResult(processed, failed, PauseReason.AUTH_ERROR)
                     }
                     e.code() >= 500 -> {
@@ -164,6 +163,7 @@ class QueueProcessor @Inject constructor(
             }
             "transaction" -> when (item.operation) {
                 "CREATE" -> moneyApi.createTransaction(json.decodeFromString<TransactionCreateRequest>(item.payload)).id
+                "UPDATE" -> moneyApi.updateTransaction(item.entityId, json.decodeFromString<JsonObject>(item.payload)).id
                 "DELETE" -> { moneyApi.deleteTransaction(item.entityId); null }
                 else -> null
             }
@@ -185,6 +185,11 @@ class QueueProcessor @Inject constructor(
             "budget" -> when (item.operation) {
                 "CREATE" -> moneyApi.createBudget(json.decodeFromString<BudgetCreateRequest>(item.payload)).id
                 "DELETE" -> { moneyApi.deleteBudget(item.entityId); null }
+                else -> null
+            }
+            "recurring_transaction" -> when (item.operation) {
+                "CREATE" -> moneyApi.createRecurring(json.decodeFromString<RecurringCreateRequest>(item.payload)).id
+                "DELETE" -> { moneyApi.deleteRecurring(item.entityId); null }
                 else -> null
             }
             else -> null

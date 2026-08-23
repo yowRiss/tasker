@@ -7,9 +7,11 @@ import com.tasker.android.remote.dto.BudgetDto
 import com.tasker.android.remote.dto.CategoryCreateRequest
 import com.tasker.android.remote.dto.CategoryDto
 import com.tasker.android.remote.dto.ItemsResponse
+import com.tasker.android.remote.dto.RecurringCreateRequest
 import com.tasker.android.remote.dto.RecurringDto
 import com.tasker.android.remote.dto.TransactionCreateRequest
 import com.tasker.android.remote.dto.TransactionDto
+import kotlinx.serialization.json.JsonObject
 import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -56,6 +58,12 @@ interface MoneyApi {
     @POST("v1/transactions")
     suspend fun createTransaction(@Body body: TransactionCreateRequest): TransactionDto
 
+    @PATCH("v1/transactions/{id}")
+    suspend fun updateTransaction(
+        @Path("id") id: String,
+        @Body body: JsonObject,
+    ): TransactionDto
+
     @DELETE("v1/transactions/{id}")
     suspend fun deleteTransaction(@Path("id") id: String): Response<Unit>
 
@@ -79,4 +87,10 @@ interface MoneyApi {
     // Recurring Transactions
     @GET("v1/recurring-transactions")
     suspend fun listRecurring(): ItemsResponse<RecurringDto>
+
+    @POST("v1/recurring-transactions")
+    suspend fun createRecurring(@Body body: RecurringCreateRequest): RecurringDto
+
+    @DELETE("v1/recurring-transactions/{id}")
+    suspend fun deleteRecurring(@Path("id") id: String): Response<Unit>
 }
