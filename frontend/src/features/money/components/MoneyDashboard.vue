@@ -92,6 +92,63 @@
         </div>
       </div>
 
+      <!-- Savings Targets Summary Card in Dashboard -->
+      <div
+        v-if="dashboard.target_summary && dashboard.target_summary.total_targets_count > 0"
+        class="card target-dashboard-card"
+      >
+        <div class="target-dash-header">
+          <div>
+            <span class="metric-label">Savings & Target Goals</span>
+            <div class="target-dash-amounts">
+              <strong class="total-saved-text">
+                {{ formatIDR(dashboard.target_summary.total_current_amount) }}
+              </strong>
+              <span class="muted">
+                / {{ formatIDR(dashboard.target_summary.total_target_amount) }}
+              </span>
+            </div>
+          </div>
+          <div class="target-dash-stats">
+            <span class="tag status-active">
+              {{ dashboard.target_summary.active_targets_count }} Active
+            </span>
+            <span
+              v-if="dashboard.target_summary.achieved_targets_count > 0"
+              class="tag status-achieved"
+            >
+              {{ dashboard.target_summary.achieved_targets_count }} Achieved 🎉
+            </span>
+          </div>
+        </div>
+
+        <div class="target-dash-bar">
+          <div
+            class="target-dash-fill"
+            :style="{
+              width: `${Math.min(100, parseFloat(dashboard.target_summary.overall_progress) || 0)}%`,
+            }"
+          ></div>
+        </div>
+        <div class="target-dash-meta">
+          <span>Overall Progress: {{ dashboard.target_summary.overall_progress }}%</span>
+          <span>
+            Remaining:
+            {{
+              formatIDR(
+                String(
+                  Math.max(
+                    0,
+                    parseFloat(dashboard.target_summary.total_target_amount) -
+                      parseFloat(dashboard.target_summary.total_current_amount),
+                  ),
+                ),
+              )
+            }}
+          </span>
+        </div>
+      </div>
+
       <!-- Reports Visualization Grid -->
       <div class="reports-grid">
         <SpendingByCategory
@@ -104,6 +161,7 @@
     </template>
   </div>
 </template>
+
 
 <script setup lang="ts">
 import { onMounted, watch } from 'vue'
@@ -263,4 +321,66 @@ function formatIDR(valStr: string): string {
     flex: 1;
   }
 }
+.target-dashboard-card {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+  background: var(--surface);
+  border-left: 4px solid var(--accent);
+}
+.target-dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.target-dash-amounts {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 2px;
+}
+.total-saved-text {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+.target-dash-stats {
+  display: flex;
+  gap: var(--space-2);
+}
+.target-dash-bar {
+  height: 0.65rem;
+  background: var(--surface-muted);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.target-dash-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.target-dash-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-small);
+  color: var(--text-muted);
+}
+.tag {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.status-active {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+.status-achieved {
+  background: #dcfce7;
+  color: #16a34a;
+}
 </style>
+

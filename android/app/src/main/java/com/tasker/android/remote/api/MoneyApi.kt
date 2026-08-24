@@ -93,4 +93,24 @@ interface MoneyApi {
 
     @DELETE("v1/recurring-transactions/{id}")
     suspend fun deleteRecurring(@Path("id") id: String): Response<Unit>
+
+    // Targets (Savings Goals)
+    @GET("v1/targets")
+    suspend fun listTargets(@Query("status") status: String? = null): ItemsResponse<TargetDto>
+
+    @GET("v1/targets/{id}")
+    suspend fun getTarget(@Path("id") id: String): TargetDto
+
+    @POST("v1/targets")
+    suspend fun createTarget(@Body body: TargetCreateRequest): TargetDto
+
+    @PATCH("v1/targets/{id}")
+    suspend fun updateTarget(@Path("id") id: String, @Body body: TargetUpdateRequest): TargetDto
+
+    @DELETE("v1/targets/{id}")
+    suspend fun deleteTarget(@Path("id") id: String): Response<Unit>
+
+    @POST("v1/targets/{id}/contribute")
+    suspend fun contributeTarget(@Path("id") id: String, @Body body: TargetContributeRequest): TargetDto
 }
+

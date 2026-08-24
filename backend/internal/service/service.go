@@ -56,6 +56,18 @@ func Amount(value string) (string, error) {
 	return value, nil
 }
 
+func NonNegativeAmount(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "0" || value == "0.0" || value == "0.00" {
+		return "0", nil
+	}
+	if !exactAmount.MatchString(value) {
+		return "", validationf("amount must be a non-negative decimal with at most two fractional digits")
+	}
+	return value, nil
+}
+
+
 func Date(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if _, err := time.Parse("2006-01-02", value); err != nil {
@@ -741,3 +753,157 @@ func (s *Service) Receipt(ctx context.Context, p domain.Principal, id string) (d
 	err := s.Do(ctx, p, func(tx pgx.Tx) error { var e error; out, e = s.repo.Receipt(ctx, tx, p.UserID, id); return e })
 	return out, err
 }
+
+type TargetInput struct {
+	Name          string
+	TargetAmount  string
+	CurrentAmount string
+	TargetDate    *string
+	CategoryID    *string
+	AccountID     *string
+	Color         *string
+	Icon          *string
+	Status        *string
+	Notes         *string
+}
+
+func (s *Service) validateTarget(ctx context.Context, tx pgx.Tx, p domain.Principal, in *TargetInput) error {
+	name, err := Title(in.Name, 80)
+	if err != nil {
+		return validationf("name %v", err)
+	}
+	in.Name = name
+
+	targetAmount, err := Amount(in.TargetAmount)
+	if err != nil {
+		return validationf("target amount %v", err)
+	}
+	in.TargetAmount = targetAmount
+
+	currAmount, err := NonNegativeAmount(in.CurrentAmount)
+	if err != nil {
+		return validationf("current amount %v", err)
+	}
+	in.CurrentAmount = currAmount
+
+	if in.TargetDate != nil && *in.TargetDate != "" {
+		d, err := Date(*in.TargetDate)
+		if err != nil {
+			return validationf("target date %v", err)
+		}
+		in.TargetDate = &d
+	} else {
+		in.TargetDate = nil
+	}
+
+	if in.CategoryID != nil && *in.CategoryID != "" {
+		if _, catErr := s.repo.Category(ctx, tx, p.UserID, *in.CategoryID); catErr != nil {
+			return validationf("target category does not exist")
+		}
+	} else {
+		in.CategoryID = nil
+	}
+
+	if in.AccountID != nil && *in.AccountID != "" {
+		if err := s.repo.ActiveAccount(ctx, tx, p.UserID, *in.AccountID); err != nil {
+			return validationf("target account does not exist or is archived")
+		}
+	} else {
+		in.AccountID = nil
+	}
+
+	if in.Status != nil && *in.Status != "" {
+		if !oneOf(*in.Status, "active", "achieved", "paused", "cancelled") {
+			return validationf("status must be one of: active, achieved, paused, cancelled")
+		}
+	} else {
+		defStatus := "active"
+		in.Status = &defStatus
+	}
+
+	if in.Notes != nil && *in.Notes != "" {
+		trimmed := strings.TrimSpace(*in.Notes)
+		if len(trimmed) > 1000 {
+			return validationf("notes exceed 1000 characters")
+		}
+		in.Notes = &trimmed
+	} else {
+		in.Notes = nil
+	}
+
+	return nil
+}
+
+func (s *Service) Targets(ctx context.Context, p domain.Principal, status string) ([]domain.Target, error) {
+	var out []domain.Target
+	err := s.Do(ctx, p, func(tx pgx.Tx) error {
+		var e error
+		out, e = s.repo.Targets(ctx, tx, p.UserID, status)
+		return e
+	})
+	return out, err
+}
+
+func (s *Service) Target(ctx context.Context, p domain.Principal, id string) (domain.Target, error) {
+	var out domain.Target
+	err := s.Do(ctx, p, func(tx pgx.Tx) error {
+		var e error
+		out, e = s.repo.Target(ctx, tx, p.UserID, id)
+		return e
+	})
+	return out, err
+}
+
+func (s *Service) CreateTarget(ctx context.Context, p domain.Principal, in TargetInput) (domain.Target, error) {
+	var out domain.Target
+	err := s.Do(ctx, p, func(tx pgx.Tx) error {
+		if e := s.validateTarget(ctx, tx, p, &in); e != nil {
+			return e
+		}
+		var e error
+		out, e = s.repo.CreateTarget(ctx, tx, p.UserID, in.Name, in.TargetAmount, in.CurrentAmount, in.TargetDate, in.CategoryID, in.AccountID, in.Color, in.Icon, in.Status, in.Notes)
+		return e
+	})
+	return out, err
+}
+
+func (s *Service) UpdateTarget(ctx context.Context, p domain.Principal, id string, in TargetInput) (domain.Target, error) {
+	var out domain.Target
+	err := s.Do(ctx, p, func(tx pgx.Tx) error {
+		if e := s.validateTarget(ctx, tx, p, &in); e != nil {
+			return e
+		}
+		var e error
+		out, e = s.repo.UpdateTarget(ctx, tx, p.UserID, id, in.Name, in.TargetAmount, in.CurrentAmount, in.TargetDate, in.CategoryID, in.AccountID, in.Color, in.Icon, in.Status, in.Notes)
+		return e
+	})
+	return out, err
+}
+
+func (s *Service) DeleteTarget(ctx context.Context, p domain.Principal, id string) error {
+	return s.Do(ctx, p, func(tx pgx.Tx) error {
+		return s.repo.DeleteTarget(ctx, tx, p.UserID, id)
+	})
+}
+
+func (s *Service) ContributeTarget(ctx context.Context, p domain.Principal, id string, amount string, isWithdraw bool) (domain.Target, error) {
+	validatedAmount, err := Amount(amount)
+	if err != nil {
+		return domain.Target{}, err
+	}
+	var out domain.Target
+	err = s.Do(ctx, p, func(tx pgx.Tx) error {
+		_, err := s.repo.Target(ctx, tx, p.UserID, id)
+		if err != nil {
+			return err
+		}
+		var e error
+		out, e = s.repo.ContributeTarget(ctx, tx, p.UserID, id, validatedAmount, isWithdraw)
+		if errors.Is(e, pgx.ErrNoRows) && isWithdraw {
+			return validationf("withdrawal amount exceeds current saved amount")
+		}
+		return e
+	})
+	return out, err
+}
+

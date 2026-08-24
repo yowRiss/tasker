@@ -474,3 +474,158 @@ func (h *Handlers) MoneyDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	response.JSON(w, http.StatusOK, x)
 }
+
+type targetRequest struct {
+	Name          string         `json:"name"`
+	TargetAmount  string         `json:"target_amount"`
+	CurrentAmount *string        `json:"current_amount"`
+	TargetDate    optionalString `json:"target_date"`
+	CategoryID    optionalString `json:"category_id"`
+	AccountID     optionalString `json:"account_id"`
+	Color         optionalString `json:"color"`
+	Icon          optionalString `json:"icon"`
+	Status        *string        `json:"status"`
+	Notes         optionalString `json:"notes"`
+}
+
+func targetInputForCreate(q targetRequest) service.TargetInput {
+	curr := "0"
+	if q.CurrentAmount != nil {
+		curr = *q.CurrentAmount
+	}
+	return service.TargetInput{
+		Name:          q.Name,
+		TargetAmount:  q.TargetAmount,
+		CurrentAmount: curr,
+		TargetDate:    q.TargetDate.Value,
+		CategoryID:    q.CategoryID.Value,
+		AccountID:     q.AccountID.Value,
+		Color:         q.Color.Value,
+		Icon:          q.Icon.Value,
+		Status:        q.Status,
+		Notes:         q.Notes.Value,
+	}
+}
+
+func targetInputForPatch(q targetRequest, current domain.Target) service.TargetInput {
+	in := service.TargetInput{
+		Name:          current.Name,
+		TargetAmount:  current.TargetAmount,
+		CurrentAmount: current.CurrentAmount,
+		TargetDate:    current.TargetDate,
+		CategoryID:    current.CategoryID,
+		AccountID:     current.AccountID,
+		Color:         current.Color,
+		Icon:          current.Icon,
+		Status:        &current.Status,
+		Notes:         current.Notes,
+	}
+	if strings.TrimSpace(q.Name) != "" {
+		in.Name = q.Name
+	}
+	if strings.TrimSpace(q.TargetAmount) != "" {
+		in.TargetAmount = q.TargetAmount
+	}
+	if q.CurrentAmount != nil {
+		in.CurrentAmount = *q.CurrentAmount
+	}
+	if q.TargetDate.Set {
+		in.TargetDate = q.TargetDate.Value
+	}
+	if q.CategoryID.Set {
+		in.CategoryID = q.CategoryID.Value
+	}
+	if q.AccountID.Set {
+		in.AccountID = q.AccountID.Value
+	}
+	if q.Color.Set {
+		in.Color = q.Color.Value
+	}
+	if q.Icon.Set {
+		in.Icon = q.Icon.Value
+	}
+	if q.Status != nil {
+		in.Status = q.Status
+	}
+	if q.Notes.Set {
+		in.Notes = q.Notes.Value
+	}
+	return in
+}
+
+type targetContributeRequest struct {
+	Amount     string `json:"amount"`
+	IsWithdraw bool   `json:"is_withdraw"`
+}
+
+func (h *Handlers) Targets(w http.ResponseWriter, r *http.Request) {
+	x, err := h.service.Targets(r.Context(), principal(r), r.URL.Query().Get("status"))
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{"items": x})
+}
+
+func (h *Handlers) Target(w http.ResponseWriter, r *http.Request) {
+	x, err := h.service.Target(r.Context(), principal(r), id(r, "targetId"))
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, x)
+}
+
+func (h *Handlers) CreateTarget(w http.ResponseWriter, r *http.Request) {
+	var q targetRequest
+	if !decode(w, r, &q) {
+		return
+	}
+	x, err := h.service.CreateTarget(r.Context(), principal(r), targetInputForCreate(q))
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusCreated, x)
+}
+
+func (h *Handlers) PatchTarget(w http.ResponseWriter, r *http.Request) {
+	var q targetRequest
+	if !decode(w, r, &q) {
+		return
+	}
+	p := principal(r)
+	current, err := h.service.Target(r.Context(), p, id(r, "targetId"))
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	x, err := h.service.UpdateTarget(r.Context(), p, current.ID, targetInputForPatch(q, current))
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, x)
+}
+
+func (h *Handlers) DeleteTarget(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.DeleteTarget(r.Context(), principal(r), id(r, "targetId")); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) ContributeTarget(w http.ResponseWriter, r *http.Request) {
+	var q targetContributeRequest
+	if !decode(w, r, &q) {
+		return
+	}
+	x, err := h.service.ContributeTarget(r.Context(), principal(r), id(r, "targetId"), q.Amount, q.IsWithdraw)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, x)
+}
+

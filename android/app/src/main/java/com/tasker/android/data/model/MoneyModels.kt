@@ -119,3 +119,43 @@ data class CreateRecurringInput(
     val nextDueDate: String,
     val endsOn: String? = null,
 )
+
+data class Target(
+    val id: String,
+    val name: String,
+    val targetAmount: Double,
+    val currentAmount: Double = 0.0,
+    val targetDate: String? = null,
+    val categoryId: String? = null,
+    val category: Category? = null,
+    val accountId: String? = null,
+    val account: Account? = null,
+    val color: String? = null,
+    val icon: String? = null,
+    val status: String = "active", // active | achieved | paused | cancelled
+    val notes: String? = null,
+    val progressPercent: Double = 0.0,
+    val remainingAmount: Double = 0.0,
+    val isAchieved: Boolean = false,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)
+
+data class CreateTargetInput(
+    val name: String,
+    val targetAmount: Double,
+    val currentAmount: Double = 0.0,
+    val targetDate: String? = null,
+    val categoryId: String? = null,
+    val accountId: String? = null,
+    val color: String? = null,
+    val icon: String? = null,
+    val status: String = "active",
+    val notes: String? = null,
+)
+
+data class ContributeTargetInput(
+    val amount: Double,
+    val isWithdraw: Boolean = false,
+)
+

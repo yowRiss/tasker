@@ -47,6 +47,9 @@ fun MoneyScreen(
             TopAppBar(
                 title = { Text("Money", style = MaterialTheme.typography.headlineLarge, color = colors.textPrimary) },
                 actions = {
+                    TextButton(onClick = { onNavigate(Screen.Targets.route) }) {
+                        Text("Targets", color = colors.accent)
+                    }
                     TextButton(onClick = { onNavigate(Screen.Budgets.route) }) {
                         Text("Budgets", color = colors.accent)
                     }
@@ -54,6 +57,7 @@ fun MoneyScreen(
                         Text("Recurring", color = colors.accent)
                     }
                 },
+
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
             )
         },

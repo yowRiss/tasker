@@ -107,8 +107,15 @@ func New(h *handlers.Handlers, v *auth.Verifier, origin string, logger *slog.Log
 		pr.Delete("/v1/recurring-transactions/{recurringTransactionId}", h.DeleteRecurring)
 		pr.Post("/v1/recurring-transactions/{recurringTransactionId}/confirm", h.ConfirmRecurring)
 		pr.Post("/v1/recurring-transactions/{recurringTransactionId}/skip", h.SkipRecurring)
+		pr.Get("/v1/targets", h.Targets)
+		pr.Post("/v1/targets", h.CreateTarget)
+		pr.Get("/v1/targets/{targetId}", h.Target)
+		pr.Patch("/v1/targets/{targetId}", h.PatchTarget)
+		pr.Delete("/v1/targets/{targetId}", h.DeleteTarget)
+		pr.Post("/v1/targets/{targetId}/contribute", h.ContributeTarget)
 		pr.Get("/v1/money/dashboard", h.MoneyDashboard)
 	})
 	r.NotFound(newSPAHandler().ServeHTTP)
 	return r
 }
+

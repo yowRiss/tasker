@@ -15,6 +15,7 @@ import com.tasker.android.data.local.dao.SubtaskDao
 import com.tasker.android.data.local.dao.SyncMetadataDao
 import com.tasker.android.data.local.dao.SyncQueueDao
 import com.tasker.android.data.local.dao.TagDao
+import com.tasker.android.data.local.dao.TargetDao
 import com.tasker.android.data.local.dao.TaskDao
 import com.tasker.android.data.local.dao.TaskTagDao
 import com.tasker.android.data.local.dao.TransactionDao
@@ -32,6 +33,7 @@ import com.tasker.android.data.local.entity.SubtaskEntity
 import com.tasker.android.data.local.entity.SyncMetadataEntity
 import com.tasker.android.data.local.entity.SyncQueueEntity
 import com.tasker.android.data.local.entity.TagEntity
+import com.tasker.android.data.local.entity.TargetEntity
 import com.tasker.android.data.local.entity.TaskEntity
 import com.tasker.android.data.local.entity.TaskTagEntity
 import com.tasker.android.data.local.entity.TransactionEntity
@@ -56,6 +58,7 @@ import com.tasker.android.data.local.entity.TransactionReceiptEntity
         TransactionReceiptEntity::class,
         BudgetEntity::class,
         RecurringTransactionEntity::class,
+        TargetEntity::class,
     ],
     version = 2,
     exportSchema = false
@@ -78,4 +81,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): TransactionReceiptDao
     abstract fun budgetDao(): BudgetDao
     abstract fun recurringDao(): RecurringDao
+    abstract fun targetDao(): TargetDao
 }
+

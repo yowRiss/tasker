@@ -52,7 +52,9 @@ sealed class Screen(val route: String) {
     data object CreateTransaction : Screen("money/transactions/create")
     data object Budgets : Screen("money/budgets")
     data object Recurring : Screen("money/recurring")
+    data object Targets : Screen("money/targets")
 }
+
 
 /** Bottom navigation tab descriptor. */
 data class BottomTab(

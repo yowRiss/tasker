@@ -12,10 +12,15 @@ import type {
   Receipt,
   RecurringTransaction,
   RecurringTransactionInput,
+  Target,
+  TargetContributeInput,
+  TargetInput,
+  TargetPatchInput,
   Transaction,
   TransactionFilters,
   TransactionInput,
 } from './money.types'
+
 
 // Accounts API
 export const listAccounts = (params: { include_archived?: boolean } = {}) =>
@@ -163,3 +168,33 @@ export const getMoneyDashboard = (params: {
   end_date: string
   group_by?: 'day' | 'week' | 'month' | ''
 }) => api<MoneyDashboard>(`/v1/money/dashboard${query(params as Record<string, string>)}`)
+
+// Targets (Savings Goals) API
+export const listTargets = (params: { status?: string } = {}) =>
+  api<{ items: Target[] }>(`/v1/targets${query(params as Record<string, string>)}`)
+
+export const getTarget = (id: string) => api<Target>(`/v1/targets/${id}`)
+
+export const createTarget = (input: TargetInput) =>
+  api<Target>('/v1/targets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+
+export const updateTarget = (id: string, input: TargetPatchInput) =>
+  api<Target>(`/v1/targets/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+
+export const deleteTarget = (id: string) => api<void>(`/v1/targets/${id}`, { method: 'DELETE' })
+
+export const contributeTarget = (id: string, input: TargetContributeInput) =>
+  api<Target>(`/v1/targets/${id}/contribute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+

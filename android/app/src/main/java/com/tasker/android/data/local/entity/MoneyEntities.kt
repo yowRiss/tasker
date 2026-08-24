@@ -208,3 +208,34 @@ data class RecurringTransactionEntity(
     @ColumnInfo(name = "is_deleted")
     val isDeleted: Int = 0,
 )
+
+@Entity(
+    tableName = "targets",
+    indices = [Index(value = ["category_id"]), Index(value = ["account_id"])]
+)
+data class TargetEntity(
+    @PrimaryKey
+    val id: String,
+    val name: String,
+    @ColumnInfo(name = "target_amount")
+    val targetAmount: Double,
+    @ColumnInfo(name = "current_amount")
+    val currentAmount: Double = 0.0,
+    @ColumnInfo(name = "target_date")
+    val targetDate: String? = null,
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    @ColumnInfo(name = "account_id")
+    val accountId: String? = null,
+    val color: String? = null,
+    val icon: String? = null,
+    val status: String = "active",
+    val notes: String? = null,
+    @ColumnInfo(name = "created_at")
+    val createdAt: String,
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: String,
+    @ColumnInfo(name = "is_deleted")
+    val isDeleted: Int = 0,
+)
+

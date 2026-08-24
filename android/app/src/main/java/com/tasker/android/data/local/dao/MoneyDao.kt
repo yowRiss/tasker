@@ -130,3 +130,22 @@ interface RecurringDao {
     @Query("UPDATE recurring_transactions SET id = :newId WHERE id = :oldId")
     suspend fun remapId(oldId: String, newId: String)
 }
+
+@Dao
+interface TargetDao {
+    @Query("SELECT * FROM targets WHERE is_deleted = 0 ORDER BY CASE WHEN status = 'active' THEN 0 WHEN status = 'achieved' THEN 1 ELSE 2 END, target_date ASC, created_at DESC")
+    fun observeAll(): Flow<List<TargetEntity>>
+
+    @Query("SELECT * FROM targets WHERE id = :id AND is_deleted = 0")
+    suspend fun getById(id: String): TargetEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(target: TargetEntity)
+
+    @Query("UPDATE targets SET is_deleted = 1, updated_at = :now WHERE id = :id")
+    suspend fun softDelete(id: String, now: String)
+
+    @Query("UPDATE targets SET id = :newId WHERE id = :oldId")
+    suspend fun remapId(oldId: String, newId: String)
+}
+

@@ -17,6 +17,7 @@ import com.tasker.android.data.local.dao.SubtaskDao
 import com.tasker.android.data.local.dao.SyncMetadataDao
 import com.tasker.android.data.local.dao.SyncQueueDao
 import com.tasker.android.data.local.dao.TagDao
+import com.tasker.android.data.local.dao.TargetDao
 import com.tasker.android.data.local.dao.TaskDao
 import com.tasker.android.data.local.dao.TaskTagDao
 import com.tasker.android.data.local.dao.TransactionDao
@@ -62,4 +63,6 @@ object DatabaseModule {
     @Provides fun provideReceiptDao(db: AppDatabase): TransactionReceiptDao = db.receiptDao()
     @Provides fun provideBudgetDao(db: AppDatabase): BudgetDao = db.budgetDao()
     @Provides fun provideRecurringDao(db: AppDatabase): RecurringDao = db.recurringDao()
+    @Provides fun provideTargetDao(db: AppDatabase): TargetDao = db.targetDao()
 }
+

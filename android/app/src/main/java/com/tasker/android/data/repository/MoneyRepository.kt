@@ -8,6 +8,7 @@ import com.tasker.android.data.local.dao.AccountDao
 import com.tasker.android.data.local.dao.BudgetDao
 import com.tasker.android.data.local.dao.CategoryDao
 import com.tasker.android.data.local.dao.RecurringDao
+import com.tasker.android.data.local.dao.TargetDao
 import com.tasker.android.data.local.dao.TransactionDao
 import com.tasker.android.data.local.dao.TransactionReceiptDao
 import com.tasker.android.data.local.entity.AccountEntity
@@ -15,16 +16,20 @@ import com.tasker.android.data.local.entity.BudgetEntity
 import com.tasker.android.data.local.entity.CategoryEntity
 import com.tasker.android.data.local.entity.RecurringTransactionEntity
 import com.tasker.android.data.local.entity.SyncQueueEntity
+import com.tasker.android.data.local.entity.TargetEntity
 import com.tasker.android.data.local.entity.TransactionEntity
 import com.tasker.android.data.local.entity.TransactionReceiptEntity
 import com.tasker.android.data.model.Account
 import com.tasker.android.data.model.Budget
 import com.tasker.android.data.model.Category
 import com.tasker.android.data.model.CategorySpendItem
+import com.tasker.android.data.model.ContributeTargetInput
 import com.tasker.android.data.model.CreateRecurringInput
+import com.tasker.android.data.model.CreateTargetInput
 import com.tasker.android.data.model.CreateTransactionInput
 import com.tasker.android.data.model.MoneyDashboardData
 import com.tasker.android.data.model.RecurringTransaction
+import com.tasker.android.data.model.Target
 import com.tasker.android.data.model.Transaction
 import com.tasker.android.data.model.TransactionReceipt
 import com.tasker.android.sync.SyncOutbox
@@ -50,8 +55,10 @@ class MoneyRepository @Inject constructor(
     private val receiptDao: TransactionReceiptDao,
     private val budgetDao: BudgetDao,
     private val recurringDao: RecurringDao,
+    private val targetDao: TargetDao,
     private val syncOutbox: SyncOutbox,
 ) {
+
 
     // ── Accounts ───────────────────────────────────────────────────
 
@@ -467,6 +474,109 @@ class MoneyRepository @Inject constructor(
         }
     }
 
+    // ── Targets (Savings Goals) ───────────────────────────────────
+
+    fun observeTargets(): Flow<List<Target>> =
+        combine(targetDao.observeAll(), categoryDao.observeAll(), accountDao.observeAll(), transactionDao.observeTransactionsFiltered()) { targets, categories, accounts, txs ->
+            val catMap = categories.associateBy { it.id }
+            val accMap = accounts.associateBy { it.id }
+            targets.map { tEntity ->
+                val category = tEntity.categoryId?.let { catMap[it]?.toDomain() }
+                val account = tEntity.accountId?.let { accMap[it]?.let { a -> a.toDomain(calculateAccountBalance(a.id, txs)) } }
+                val pct = if (tEntity.targetAmount > 0) (tEntity.currentAmount / tEntity.targetAmount) * 100.0 else 0.0
+                val remaining = maxOf(0.0, tEntity.targetAmount - tEntity.currentAmount)
+                val isAchieved = tEntity.currentAmount >= tEntity.targetAmount || tEntity.status == "achieved"
+                tEntity.toDomain(category, account, pct, remaining, isAchieved)
+            }
+        }
+
+    suspend fun createTarget(input: CreateTargetInput): Target {
+        val id = UUID.randomUUID().toString()
+        val now = Instant.now().toString()
+        val entity = TargetEntity(
+            id = id,
+            name = input.name,
+            targetAmount = input.targetAmount,
+            currentAmount = input.currentAmount,
+            targetDate = input.targetDate,
+            categoryId = input.categoryId,
+            accountId = input.accountId,
+            color = input.color,
+            icon = input.icon,
+            status = input.status,
+            notes = input.notes,
+            createdAt = now,
+            updatedAt = now,
+        )
+        db.withTransaction {
+            targetDao.upsert(entity)
+            syncOutbox.enqueue(
+                SyncQueueEntity(
+                    entityType = "target",
+                    entityId = id,
+                    operation = "CREATE",
+                    payload = buildJsonObject {
+                        put("name", input.name)
+                        put("target_amount", input.targetAmount.toString())
+                        put("current_amount", input.currentAmount.toString())
+                        input.targetDate?.let { put("target_date", it) }
+                        input.categoryId?.let { put("category_id", it) }
+                        input.accountId?.let { put("account_id", it) }
+                        input.color?.let { put("color", it) }
+                        input.icon?.let { put("icon", it) }
+                        put("status", input.status)
+                        input.notes?.let { put("notes", it) }
+                    }.toString(),
+                    createdAt = now,
+                )
+            )
+        }
+        val category = input.categoryId?.let { categoryDao.getById(it)?.toDomain() }
+        val account = input.accountId?.let { accountDao.getById(it)?.toDomain(0.0) }
+        val pct = if (entity.targetAmount > 0) (entity.currentAmount / entity.targetAmount) * 100.0 else 0.0
+        val remaining = maxOf(0.0, entity.targetAmount - entity.currentAmount)
+        return entity.toDomain(category, account, pct, remaining, entity.currentAmount >= entity.targetAmount)
+    }
+
+    suspend fun contributeTarget(id: String, amount: Double, isWithdraw: Boolean) {
+        val now = Instant.now().toString()
+        db.withTransaction {
+            val existing = targetDao.getById(id) ?: return@withTransaction
+            val newAmount = if (isWithdraw) maxOf(0.0, existing.currentAmount - amount) else existing.currentAmount + amount
+            val newStatus = if (newAmount >= existing.targetAmount && existing.status == "active") "achieved" else if (newAmount < existing.targetAmount && existing.status == "achieved") "active" else existing.status
+            val updated = existing.copy(currentAmount = newAmount, status = newStatus, updatedAt = now)
+            targetDao.upsert(updated)
+            syncOutbox.enqueue(
+                SyncQueueEntity(
+                    entityType = "target",
+                    entityId = id,
+                    operation = "CONTRIBUTE",
+                    payload = buildJsonObject {
+                        put("amount", amount.toString())
+                        put("is_withdraw", isWithdraw)
+                    }.toString(),
+                    createdAt = now,
+                )
+            )
+        }
+    }
+
+    suspend fun deleteTarget(id: String) {
+        val now = Instant.now().toString()
+        db.withTransaction {
+            targetDao.softDelete(id, now)
+            syncOutbox.enqueue(
+                SyncQueueEntity(
+                    entityType = "target",
+                    entityId = id,
+                    operation = "DELETE",
+                    payload = "{}",
+                    createdAt = now,
+                )
+            )
+        }
+    }
+
     // ── Mappers ────────────────────────────────────────────────────
 
     private fun AccountEntity.toDomain(balance: Double) = Account(
@@ -492,4 +602,9 @@ class MoneyRepository @Inject constructor(
     private fun RecurringTransactionEntity.toDomain(account: Account?, category: Category?) = RecurringTransaction(
         id = id, transactionType = transactionType, amount = amount, accountId = accountId, account = account, categoryId = categoryId, category = category, description = description, cadence = cadence, nextDueDate = nextDueDate, endsOn = endsOn, isActive = isActive, lastProcessedOn = lastProcessedOn, createdAt = createdAt, updatedAt = updatedAt
     )
+
+    private fun TargetEntity.toDomain(category: Category?, account: Account?, percent: Double, remaining: Double, isAchieved: Boolean) = Target(
+        id = id, name = name, targetAmount = targetAmount, currentAmount = currentAmount, targetDate = targetDate, categoryId = categoryId, category = category, accountId = accountId, account = account, color = color, icon = icon, status = status, notes = notes, progressPercent = percent, remainingAmount = remaining, isAchieved = isAchieved, createdAt = createdAt, updatedAt = updatedAt
+    )
 }
+

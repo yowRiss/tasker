@@ -34,6 +34,14 @@
         >
           {{ creatingRecurring ? 'Close' : 'New Recurring' }}
         </button>
+
+        <button
+          v-if="activeTab === 'targets'"
+          class="button primary"
+          @click="toggleCreatingTarget"
+        >
+          {{ creatingTarget ? 'Close' : 'New Target' }}
+        </button>
       </div>
     </header>
 
@@ -88,7 +96,16 @@
         Recurring ({{ recurringTemplates.length }})
         <span v-if="dueRecurring.length" class="due-badge">{{ dueRecurring.length }}</span>
       </button>
+      <button
+        type="button"
+        class="tab-link"
+        :class="{ active: activeTab === 'targets' }"
+        @click="activeTab = 'targets'"
+      >
+        Savings Targets ({{ targets.length }})
+      </button>
     </nav>
+
 
     <!-- Global Notice / Error -->
     <p v-if="globalError" class="notice">{{ globalError }}</p>
@@ -199,6 +216,35 @@
         No recurring transactions set up. Create templates for rent, subscriptions, or salary.
       </p>
     </section>
+
+    <!-- TAB 5: TARGETS (SAVINGS GOALS) -->
+    <section v-if="activeTab === 'targets'" class="tab-content">
+      <TargetEditor
+        v-if="creatingTarget || editingTarget"
+        :target="editingTarget"
+        :categories="categories"
+        :accounts="accounts"
+        @save="handleSaveTarget"
+        @cancel="cancelTarget"
+      />
+
+      <p v-if="targetStore.loading.value" class="empty">Loading savings targets…</p>
+      <TargetList
+        v-else
+        :targets="targets"
+        @edit="handleEditTarget"
+        @delete="handleDeleteTarget"
+        @contribute="handleOpenContribute"
+      />
+
+      <!-- Contribute Modal -->
+      <TargetContributeModal
+        v-if="contributingTarget"
+        :target="contributingTarget"
+        @submit="handleContributeSubmit"
+        @close="contributingTarget = null"
+      />
+    </section>
   </section>
 </template>
 
@@ -212,6 +258,9 @@ import MoneyDashboard from '../features/money/components/MoneyDashboard.vue'
 import RecurringDueBanner from '../features/money/components/RecurringDueBanner.vue'
 import RecurringEditor from '../features/money/components/RecurringEditor.vue'
 import RecurringList from '../features/money/components/RecurringList.vue'
+import TargetContributeModal from '../features/money/components/TargetContributeModal.vue'
+import TargetEditor from '../features/money/components/TargetEditor.vue'
+import TargetList from '../features/money/components/TargetList.vue'
 import TransactionEditor from '../features/money/components/TransactionEditor.vue'
 import TransactionFiltersComponent from '../features/money/components/TransactionFilters.vue'
 import TransactionList from '../features/money/components/TransactionList.vue'
@@ -219,6 +268,7 @@ import { useAccounts } from '../features/money/composables/useAccounts'
 import { useBudgets } from '../features/money/composables/useBudgets'
 import { useCategories } from '../features/money/composables/useCategories'
 import { useRecurringTransactions } from '../features/money/composables/useRecurringTransactions'
+import { useTargets } from '../features/money/composables/useTargets'
 import { useTransactions } from '../features/money/composables/useTransactions'
 import type {
   Budget,
@@ -227,14 +277,16 @@ import type {
   CategoryInput,
   RecurringTransaction,
   RecurringTransactionInput,
+  Target,
+  TargetInput,
   Transaction,
   TransactionFilters,
   TransactionInput,
 } from '../features/money/money.types'
 
-const activeTab = ref<'dashboard' | 'transactions' | 'categories' | 'budgets' | 'recurring'>(
-  'dashboard',
-)
+const activeTab = ref<
+  'dashboard' | 'transactions' | 'categories' | 'budgets' | 'recurring' | 'targets'
+>('dashboard')
 
 // Stores
 const accountStore = useAccounts()
@@ -242,12 +294,15 @@ const categoryStore = useCategories()
 const transactionStore = useTransactions()
 const budgetStore = useBudgets()
 const recurringStore = useRecurringTransactions()
+const targetStore = useTargets()
 
-const { defaultAccountId } = accountStore
+const { defaultAccountId, accounts } = accountStore
 const { categories } = categoryStore
 const { transactions } = transactionStore
 const { budgets } = budgetStore
 const { recurring: recurringTemplates, dueRecurring } = recurringStore
+const { targets } = targetStore
+
 
 const globalError = computed(() => {
   return (
@@ -256,6 +311,7 @@ const globalError = computed(() => {
     transactionStore.error.value ||
     budgetStore.error.value ||
     recurringStore.error.value ||
+    targetStore.error.value ||
     null
   )
 })
@@ -317,6 +373,21 @@ function cancelRecurring() {
   editingRecurring.value = null
 }
 
+// Target state
+const creatingTarget = ref(false)
+const editingTarget = ref<Target | null>(null)
+const contributingTarget = ref<Target | null>(null)
+
+function toggleCreatingTarget() {
+  editingTarget.value = null
+  creatingTarget.value = !creatingTarget.value
+}
+
+function cancelTarget() {
+  creatingTarget.value = false
+  editingTarget.value = null
+}
+
 const filters = reactive<TransactionFilters>({
   start_date: '',
   end_date: '',
@@ -347,6 +418,11 @@ async function reloadRecurring() {
   await recurringStore.loadAll()
   await recurringStore.loadDue()
 }
+
+async function reloadTargets() {
+  await targetStore.load()
+}
+
 
 function resetFilters() {
   filters.start_date = ''
@@ -382,7 +458,9 @@ onMounted(async () => {
   await reloadTransactions()
   await reloadBudgets()
   await reloadRecurring()
+  await reloadTargets()
 })
+
 
 // Transaction Actions
 async function handleSaveTransaction(input: TransactionInput) {
@@ -533,7 +611,56 @@ async function handleSkipRecurring(id: string) {
     console.error('Skip recurring error:', e)
   }
 }
+
+// Target Actions
+async function handleSaveTarget(input: TargetInput) {
+  try {
+    if (editingTarget.value) {
+      await targetStore.editTarget(editingTarget.value.id, input)
+      editingTarget.value = null
+    } else {
+      await targetStore.addTarget(input)
+      creatingTarget.value = false
+    }
+    await reloadTargets()
+  } catch (e: unknown) {
+    console.error('Save target error:', e)
+  }
+}
+
+function handleEditTarget(tgt: Target) {
+  creatingTarget.value = false
+  editingTarget.value = tgt
+}
+
+async function handleDeleteTarget(id: string) {
+  if (!confirm('Are you sure you want to delete this savings target?')) return
+  try {
+    await targetStore.removeTarget(id)
+  } catch (e: unknown) {
+    console.error('Delete target error:', e)
+  }
+}
+
+function handleOpenContribute(tgt: Target) {
+  contributingTarget.value = tgt
+}
+
+async function handleContributeSubmit(amount: string, isWithdraw: boolean) {
+  if (!contributingTarget.value) return
+  try {
+    await targetStore.contribute(contributingTarget.value.id, {
+      amount,
+      is_withdraw: isWithdraw,
+    })
+    contributingTarget.value = null
+    await reloadTargets()
+  } catch (e: unknown) {
+    console.error('Contribute target error:', e)
+  }
+}
 </script>
+
 
 <style scoped>
 .money-tabs {

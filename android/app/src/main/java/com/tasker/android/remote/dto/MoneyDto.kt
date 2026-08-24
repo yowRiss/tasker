@@ -167,3 +167,83 @@ data class RecurringCreateRequest(
     @SerialName("is_active")
     val isActive: Boolean = true,
 )
+
+@Serializable
+data class TargetDto(
+    val id: String,
+    val name: String,
+    @SerialName("target_amount")
+    val targetAmount: String,
+    @SerialName("current_amount")
+    val currentAmount: String = "0.00",
+    @SerialName("target_date")
+    val targetDate: String? = null,
+    @SerialName("category_id")
+    val categoryId: String? = null,
+    @SerialName("category_name")
+    val categoryName: String? = null,
+    @SerialName("account_id")
+    val accountId: String? = null,
+    @SerialName("account_name")
+    val accountName: String? = null,
+    val color: String? = null,
+    val icon: String? = null,
+    val status: String = "active",
+    val notes: String? = null,
+    @SerialName("progress_percent")
+    val progressPercent: String = "0.00",
+    @SerialName("remaining_amount")
+    val remainingAmount: String = "0.00",
+    @SerialName("is_achieved")
+    val isAchieved: Boolean = false,
+    @SerialName("created_at")
+    val createdAt: String,
+    @SerialName("updated_at")
+    val updatedAt: String,
+)
+
+@Serializable
+data class TargetCreateRequest(
+    val name: String,
+    @SerialName("target_amount")
+    val targetAmount: String,
+    @SerialName("current_amount")
+    val currentAmount: String? = null,
+    @SerialName("target_date")
+    val targetDate: String? = null,
+    @SerialName("category_id")
+    val categoryId: String? = null,
+    @SerialName("account_id")
+    val accountId: String? = null,
+    val color: String? = null,
+    val icon: String? = null,
+    val status: String? = null,
+    val notes: String? = null,
+)
+
+@Serializable
+data class TargetUpdateRequest(
+    val name: String? = null,
+    @SerialName("target_amount")
+    val targetAmount: String? = null,
+    @SerialName("current_amount")
+    val currentAmount: String? = null,
+    @SerialName("target_date")
+    val targetDate: String? = null,
+    @SerialName("category_id")
+    val categoryId: String? = null,
+    @SerialName("account_id")
+    val accountId: String? = null,
+    val color: String? = null,
+    val icon: String? = null,
+    val status: String? = null,
+    val notes: String? = null,
+)
+
+@Serializable
+data class TargetContributeRequest(
+    val amount: String,
+    @SerialName("is_withdraw")
+    val isWithdraw: Boolean = false,
+)
+

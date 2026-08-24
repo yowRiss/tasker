@@ -169,4 +169,69 @@ export interface MoneyDashboard {
   expense: string
   category_spend: CategorySpend[]
   trend: MoneyTrendPoint[]
+  target_summary?: TargetSummary | null
 }
+
+export type TargetStatus = 'active' | 'achieved' | 'paused' | 'cancelled'
+
+export interface Target {
+  id: string
+  name: string
+  target_amount: string
+  current_amount: string
+  target_date?: string | null
+  category_id?: string | null
+  category_name?: string | null
+  account_id?: string | null
+  account_name?: string | null
+  color?: string | null
+  icon?: string | null
+  status: TargetStatus
+  notes?: string | null
+  progress_percent: string
+  remaining_amount: string
+  is_achieved: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TargetInput {
+  name: string
+  target_amount: string
+  current_amount?: string
+  target_date?: string | null
+  category_id?: string | null
+  account_id?: string | null
+  color?: string | null
+  icon?: string | null
+  status?: TargetStatus
+  notes?: string | null
+}
+
+export interface TargetPatchInput {
+  name?: string
+  target_amount?: string
+  current_amount?: string
+  target_date?: string | null
+  category_id?: string | null
+  account_id?: string | null
+  color?: string | null
+  icon?: string | null
+  status?: TargetStatus
+  notes?: string | null
+}
+
+export interface TargetContributeInput {
+  amount: string
+  is_withdraw?: boolean
+}
+
+export interface TargetSummary {
+  total_targets_count: number
+  active_targets_count: number
+  achieved_targets_count: number
+  total_target_amount: string
+  total_current_amount: string
+  overall_progress: string
+}
+

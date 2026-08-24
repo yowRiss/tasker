@@ -156,6 +156,12 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+            composable(Screen.Targets.route) {
+                com.tasker.android.ui.money.TargetsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             composable(Screen.CreateTransaction.route) {
                 com.tasker.android.ui.money.TransactionDetailScreen(
                     txId   = null,

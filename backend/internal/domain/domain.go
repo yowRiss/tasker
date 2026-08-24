@@ -182,4 +182,36 @@ type MoneyDashboard struct {
 	Expense       string            `json:"expense"`
 	CategorySpend []CategorySpend   `json:"category_spend"`
 	Trend         []MoneyTrendPoint `json:"trend"`
+	TargetSummary *TargetSummary    `json:"target_summary,omitempty"`
 }
+
+type Target struct {
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	TargetAmount    string    `json:"target_amount"`
+	CurrentAmount   string    `json:"current_amount"`
+	TargetDate      *string   `json:"target_date,omitempty"`
+	CategoryID      *string   `json:"category_id,omitempty"`
+	CategoryName    *string   `json:"category_name,omitempty"`
+	AccountID       *string   `json:"account_id,omitempty"`
+	AccountName     *string   `json:"account_name,omitempty"`
+	Color           *string   `json:"color,omitempty"`
+	Icon            *string   `json:"icon,omitempty"`
+	Status          string    `json:"status"`
+	Notes           *string   `json:"notes,omitempty"`
+	ProgressPercent string    `json:"progress_percent"`
+	RemainingAmount string    `json:"remaining_amount"`
+	IsAchieved      bool      `json:"is_achieved"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type TargetSummary struct {
+	TotalTargetsCount    int    `json:"total_targets_count"`
+	ActiveTargetsCount   int    `json:"active_targets_count"`
+	AchievedTargetsCount int    `json:"achieved_targets_count"`
+	TotalTargetAmount    string `json:"total_target_amount"`
+	TotalCurrentAmount   string `json:"total_current_amount"`
+	OverallProgress      string `json:"overall_progress"`
+}
+

@@ -1002,5 +1002,143 @@ from transactions where user_id=$1 and transaction_date between $2::date and $3:
 		}
 		out.Trend = append(out.Trend, x)
 	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	ts, err := r.TargetSummary(ctx, tx, userID)
+	if err == nil {
+		out.TargetSummary = &ts
+	}
+	return out, nil
+}
+
+const targetFields = `tg.id,tg.name,tg.target_amount::text,tg.current_amount::text,
+  tg.target_date::text,tg.category_id,c.name,tg.account_id,a.name,
+  tg.color,tg.icon,tg.status,tg.notes,
+  round((tg.current_amount/tg.target_amount)*100,2)::text,
+  greatest(0,tg.target_amount-tg.current_amount)::text,
+  (tg.current_amount>=tg.target_amount),
+  tg.created_at,tg.updated_at`
+
+const targetJoins = `
+ left join categories c on c.id=tg.category_id and c.user_id=tg.user_id
+ left join accounts a on a.id=tg.account_id and a.user_id=tg.user_id`
+
+func scanTarget(row pgx.Row) (domain.Target, error) {
+	var x domain.Target
+	err := row.Scan(&x.ID, &x.Name, &x.TargetAmount, &x.CurrentAmount,
+		&x.TargetDate, &x.CategoryID, &x.CategoryName, &x.AccountID, &x.AccountName,
+		&x.Color, &x.Icon, &x.Status, &x.Notes,
+		&x.ProgressPercent, &x.RemainingAmount, &x.IsAchieved,
+		&x.CreatedAt, &x.UpdatedAt)
+	return x, err
+}
+
+func (r *Repository) Targets(ctx context.Context, tx pgx.Tx, userID, status string) ([]domain.Target, error) {
+	args := []any{userID}
+	query := "select " + targetFields + " from targets tg " + targetJoins + " where tg.user_id=$1"
+	if status != "" && status != "all" {
+		args = append(args, status)
+		query += fmt.Sprintf(" and tg.status=$%d", len(args))
+	}
+	query += " order by case when tg.status='active' then 0 when tg.status='achieved' then 1 else 2 end, tg.target_date nulls last, tg.created_at desc"
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.Target{}
+	for rows.Next() {
+		x, err := scanTarget(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
 	return out, rows.Err()
 }
+
+func (r *Repository) Target(ctx context.Context, tx pgx.Tx, userID, id string) (domain.Target, error) {
+	return scanTarget(tx.QueryRow(ctx, "select "+targetFields+" from targets tg "+targetJoins+" where tg.user_id=$1 and tg.id=$2", userID, id))
+}
+
+func (r *Repository) CreateTarget(ctx context.Context, tx pgx.Tx, userID, name, targetAmount, currentAmount string, targetDate, categoryID, accountID, color, icon, status, notes *string) (domain.Target, error) {
+	var id string
+	st := "active"
+	if status != nil && *status != "" {
+		st = *status
+	}
+	err := tx.QueryRow(ctx, `insert into targets(user_id,name,target_amount,current_amount,target_date,category_id,account_id,color,icon,status,notes)
+values($1,$2,$3::numeric,$4::numeric,$5::date,$6,$7,$8,$9,$10,$11) returning id`,
+		userID, name, targetAmount, currentAmount, targetDate, categoryID, accountID, color, icon, st, notes).Scan(&id)
+	if err != nil {
+		return domain.Target{}, err
+	}
+	return r.Target(ctx, tx, userID, id)
+}
+
+func (r *Repository) UpdateTarget(ctx context.Context, tx pgx.Tx, userID, id, name, targetAmount, currentAmount string, targetDate, categoryID, accountID, color, icon, status, notes *string) (domain.Target, error) {
+	st := "active"
+	if status != nil && *status != "" {
+		st = *status
+	}
+	tag, err := tx.Exec(ctx, `update targets set name=$3,target_amount=$4::numeric,current_amount=$5::numeric,target_date=$6::date,
+category_id=$7,account_id=$8,color=$9,icon=$10,status=$11,notes=$12 where id=$1 and user_id=$2`,
+		id, userID, name, targetAmount, currentAmount, targetDate, categoryID, accountID, color, icon, st, notes)
+	if err != nil {
+		return domain.Target{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.Target{}, pgx.ErrNoRows
+	}
+	return r.Target(ctx, tx, userID, id)
+}
+
+func (r *Repository) DeleteTarget(ctx context.Context, tx pgx.Tx, userID, id string) error {
+	tag, err := tx.Exec(ctx, "delete from targets where id=$1 and user_id=$2", id, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *Repository) ContributeTarget(ctx context.Context, tx pgx.Tx, userID, id, amount string, isWithdraw bool) (domain.Target, error) {
+	var sql string
+	if isWithdraw {
+		sql = `update targets set
+current_amount = current_amount - $3::numeric,
+status = case when current_amount - $3::numeric < target_amount and status = 'achieved' then 'active' else status end
+where id=$1 and user_id=$2 and current_amount >= $3::numeric`
+	} else {
+		sql = `update targets set
+current_amount = current_amount + $3::numeric,
+status = case when current_amount + $3::numeric >= target_amount and status = 'active' then 'achieved' else status end
+where id=$1 and user_id=$2`
+	}
+	tag, err := tx.Exec(ctx, sql, id, userID, amount)
+	if err != nil {
+		return domain.Target{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.Target{}, pgx.ErrNoRows
+	}
+	return r.Target(ctx, tx, userID, id)
+}
+
+func (r *Repository) TargetSummary(ctx context.Context, tx pgx.Tx, userID string) (domain.TargetSummary, error) {
+	var s domain.TargetSummary
+	err := tx.QueryRow(ctx, `select
+  count(*)::int,
+  count(*) filter (where status='active')::int,
+  count(*) filter (where status='achieved' or current_amount >= target_amount)::int,
+  coalesce(sum(target_amount),0)::text,
+  coalesce(sum(current_amount),0)::text,
+  case when coalesce(sum(target_amount),0)>0 then round((coalesce(sum(current_amount),0)/sum(target_amount))*100,2)::text else '0' end
+from targets where user_id=$1`, userID).Scan(&s.TotalTargetsCount, &s.ActiveTargetsCount, &s.AchievedTargetsCount, &s.TotalTargetAmount, &s.TotalCurrentAmount, &s.OverallProgress)
+	return s, err
+}
+
+
