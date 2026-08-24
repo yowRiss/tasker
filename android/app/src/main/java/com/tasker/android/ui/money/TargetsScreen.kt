@@ -170,8 +170,9 @@ fun TargetsScreen(
                                     progress = { (overallPercent / 100f).coerceIn(0f, 1f) },
                                     modifier = Modifier.fillMaxWidth().height(8.dp),
                                     color = if (overallPercent >= 100) colors.success else colors.accent,
-                                    trackColor = colors.surfaceVariant,
+                                    trackColor = colors.surfaceAlt,
                                 )
+
                                 Spacer(Modifier.height(6.dp))
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text("$overallPercent% Complete", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
@@ -249,7 +250,7 @@ fun TargetsScreen(
                                     progress = { (target.progressPercent / 100.0).toFloat().coerceIn(0f, 1f) },
                                     modifier = Modifier.fillMaxWidth().height(8.dp),
                                     color = if (isAchieved) colors.success else colors.accent,
-                                    trackColor = colors.surfaceVariant,
+                                    trackColor = colors.surfaceAlt,
                                 )
 
                                 Spacer(Modifier.height(6.dp))
@@ -279,9 +280,10 @@ fun TargetsScreen(
                                     }
 
                                     IconButton(onClick = { targetPendingDelete = target }) {
-                                        Icon(Icons.Outlined.Delete, "Delete Target", tint = colors.danger)
+                                        Icon(Icons.Outlined.Delete, "Delete Target", tint = colors.destructive)
                                     }
                                 }
+
                             }
                         }
                     }
@@ -442,9 +444,10 @@ fun TargetsScreen(
                             viewModel.deleteTarget(target.id)
                             targetPendingDelete = null
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.danger)
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.destructive)
                     ) { Text("Delete", color = Color.White) }
                 },
+
                 dismissButton = {
                     TextButton(onClick = { targetPendingDelete = null }) { Text("Cancel", color = colors.textSecondary) }
                 }

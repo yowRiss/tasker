@@ -9,8 +9,13 @@ import com.tasker.android.remote.dto.CategoryDto
 import com.tasker.android.remote.dto.ItemsResponse
 import com.tasker.android.remote.dto.RecurringCreateRequest
 import com.tasker.android.remote.dto.RecurringDto
+import com.tasker.android.remote.dto.TargetContributeRequest
+import com.tasker.android.remote.dto.TargetCreateRequest
+import com.tasker.android.remote.dto.TargetDto
+import com.tasker.android.remote.dto.TargetUpdateRequest
 import com.tasker.android.remote.dto.TransactionCreateRequest
 import com.tasker.android.remote.dto.TransactionDto
+
 import kotlinx.serialization.json.JsonObject
 import okhttp3.MultipartBody
 import retrofit2.Response
