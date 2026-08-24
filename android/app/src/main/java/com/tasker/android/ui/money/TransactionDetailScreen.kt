@@ -243,14 +243,6 @@ fun TransactionDetailScreen(
 }
 
 @Composable
-private fun filterChipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = TaskerTheme.colors.accentSubtle,
-    selectedLabelColor = TaskerTheme.colors.accent,
-    containerColor = TaskerTheme.colors.surfaceAlt,
-    labelColor = TaskerTheme.colors.textSecondary
-)
-
-@Composable
 private fun taskerOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = TaskerTheme.colors.accent,
     unfocusedBorderColor = TaskerTheme.colors.border,

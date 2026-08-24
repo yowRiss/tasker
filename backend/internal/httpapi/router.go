@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 	"tasker/backend/internal/auth"
 	"tasker/backend/internal/httpapi/handlers"
 	"tasker/backend/internal/httpapi/middleware"
+	"time"
 )
 
 func New(h *handlers.Handlers, v *auth.Verifier, origin string, logger *slog.Logger) http.Handler {
