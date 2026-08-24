@@ -60,9 +60,10 @@ import com.tasker.android.data.local.entity.TransactionReceiptEntity
         RecurringTransactionEntity::class,
         TargetEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
+
 abstract class AppDatabase : RoomDatabase() {
     abstract fun syncQueueDao(): SyncQueueDao
     abstract fun syncMetadataDao(): SyncMetadataDao

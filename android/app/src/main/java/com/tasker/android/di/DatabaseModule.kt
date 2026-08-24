@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.tasker.android.data.local.AppDatabase
 import com.tasker.android.data.local.MIGRATION_1_2
+import com.tasker.android.data.local.MIGRATION_2_3
 import com.tasker.android.data.local.dao.AccountDao
 import com.tasker.android.data.local.dao.BudgetDao
 import com.tasker.android.data.local.dao.CategoryDao
@@ -43,8 +44,10 @@ object DatabaseModule {
         "tasker.db"
     )
         .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-        .addMigrations(MIGRATION_1_2)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+        .fallbackToDestructiveMigration()
         .build()
+
 
     @Provides fun provideSyncQueueDao(db: AppDatabase): SyncQueueDao = db.syncQueueDao()
     @Provides fun provideSyncMetadataDao(db: AppDatabase): SyncMetadataDao = db.syncMetadataDao()
