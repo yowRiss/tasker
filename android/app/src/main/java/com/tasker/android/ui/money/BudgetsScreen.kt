@@ -31,9 +31,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.text.NumberFormat
 import java.time.LocalDate
-import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -220,6 +218,3 @@ fun BudgetsScreen(
         )
     }
 }
-
-private fun formatCurrency(amount: Double): String =
-    NumberFormat.getCurrencyInstance(Locale("id", "ID")).format(amount)

@@ -35,9 +35,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.text.NumberFormat
 import java.time.LocalDate
-import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -123,7 +121,7 @@ fun RecurringScreen(
                                     Text(rec.description ?: rec.category?.name ?: "Recurring", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        "${rec.cadence.capitalize()} • Next due ${rec.nextDueDate}",
+                                        "${rec.cadence.capitalizeLabel()} • Next due ${rec.nextDueDate}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = colors.textSecondary,
                                     )
@@ -201,7 +199,7 @@ fun RecurringScreen(
                                     transactionType = type
                                     categoryId = ""
                                 },
-                                label = { Text(type.capitalize()) },
+                                label = { Text(type.capitalizeLabel()) },
                             )
                         }
                     }
@@ -244,7 +242,7 @@ fun RecurringScreen(
                             FilterChip(
                                 selected = cadence == option,
                                 onClick = { cadence = option },
-                                label = { Text(option.capitalize()) },
+                                label = { Text(option.capitalizeLabel()) },
                             )
                         }
                     }
@@ -287,8 +285,3 @@ fun RecurringScreen(
         )
     }
 }
-
-private fun formatCurrency(amount: Double): String =
-    NumberFormat.getCurrencyInstance(Locale("id", "ID")).format(amount)
-
-private fun String.capitalize(): String = replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
