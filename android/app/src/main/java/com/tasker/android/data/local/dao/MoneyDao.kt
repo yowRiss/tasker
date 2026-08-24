@@ -8,9 +8,11 @@ import com.tasker.android.data.local.entity.AccountEntity
 import com.tasker.android.data.local.entity.BudgetEntity
 import com.tasker.android.data.local.entity.CategoryEntity
 import com.tasker.android.data.local.entity.RecurringTransactionEntity
+import com.tasker.android.data.local.entity.TargetEntity
 import com.tasker.android.data.local.entity.TransactionEntity
 import com.tasker.android.data.local.entity.TransactionReceiptEntity
 import kotlinx.coroutines.flow.Flow
+
 
 @Dao
 interface AccountDao {

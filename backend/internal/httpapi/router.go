@@ -118,4 +118,3 @@ func New(h *handlers.Handlers, v *auth.Verifier, origin string, logger *slog.Log
 	r.NotFound(newSPAHandler().ServeHTTP)
 	return r
 }
-

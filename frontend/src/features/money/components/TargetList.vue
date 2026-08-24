@@ -140,11 +140,7 @@
             💰 Deposit / Withdraw
           </button>
           <button type="button" class="button subtle" @click="$emit('edit', tgt)">Edit</button>
-          <button
-            type="button"
-            class="button subtle danger"
-            @click="$emit('delete', tgt.id)"
-          >
+          <button type="button" class="button subtle danger" @click="$emit('delete', tgt.id)">
             Delete
           </button>
         </div>
@@ -152,7 +148,8 @@
     </div>
 
     <p v-else class="card empty">
-      No targets found for the selected filter. Create a target to start tracking your savings goals.
+      No targets found for the selected filter. Create a target to start tracking your savings
+      goals.
     </p>
   </div>
 </template>
@@ -349,7 +346,9 @@ function formatIDR(valStr: string): string {
   justify-content: space-between;
   gap: var(--space-4);
   position: relative;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .target-card:hover {
   transform: translateY(-2px);

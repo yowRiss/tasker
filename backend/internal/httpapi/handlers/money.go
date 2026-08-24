@@ -628,4 +628,3 @@ func (h *Handlers) ContributeTarget(w http.ResponseWriter, r *http.Request) {
 	}
 	response.JSON(w, http.StatusOK, x)
 }
-

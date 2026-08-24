@@ -6,12 +6,7 @@ import {
   listTargets,
   updateTarget,
 } from '../money.api'
-import type {
-  Target,
-  TargetContributeInput,
-  TargetInput,
-  TargetPatchInput,
-} from '../money.types'
+import type { Target, TargetContributeInput, TargetInput, TargetPatchInput } from '../money.types'
 
 export function useTargets() {
   const targets = ref<Target[]>([])

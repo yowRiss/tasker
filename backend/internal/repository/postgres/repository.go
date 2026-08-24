@@ -1140,5 +1140,3 @@ func (r *Repository) TargetSummary(ctx context.Context, tx pgx.Tx, userID string
 from targets where user_id=$1`, userID).Scan(&s.TotalTargetsCount, &s.ActiveTargetsCount, &s.AchievedTargetsCount, &s.TotalTargetAmount, &s.TotalCurrentAmount, &s.OverallProgress)
 	return s, err
 }
-
-

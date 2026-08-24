@@ -14,6 +14,7 @@ import com.tasker.android.data.local.dao.RecurringDao
 import com.tasker.android.data.local.dao.SubtaskDao
 import com.tasker.android.data.local.dao.SyncQueueDao
 import com.tasker.android.data.local.dao.TagDao
+import com.tasker.android.data.local.dao.TargetDao
 import com.tasker.android.data.local.dao.TaskDao
 import com.tasker.android.data.local.dao.TaskTagDao
 import com.tasker.android.data.local.dao.TransactionDao
@@ -37,6 +38,7 @@ class IdRemapper @Inject constructor(
     private val transactionDao: TransactionDao,
     private val budgetDao: BudgetDao,
     private val recurringDao: RecurringDao,
+    private val targetDao: TargetDao,
     private val syncQueueDao: SyncQueueDao,
 ) {
     suspend fun remapId(entityType: String, oldId: String, newId: String) {
@@ -77,8 +79,12 @@ class IdRemapper @Inject constructor(
                 "recurring_transaction" -> {
                     recurringDao.remapId(oldId, newId)
                 }
+                "target" -> {
+                    targetDao.remapId(oldId, newId)
+                }
             }
             syncQueueDao.remapEntityId(oldId, newId)
         }
     }
 }
+

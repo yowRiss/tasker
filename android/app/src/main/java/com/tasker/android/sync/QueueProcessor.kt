@@ -14,9 +14,13 @@ import com.tasker.android.remote.dto.NoteUpdateRequest
 import com.tasker.android.remote.dto.ProjectCreateRequest
 import com.tasker.android.remote.dto.RecurringCreateRequest
 import com.tasker.android.remote.dto.TagCreateRequest
+import com.tasker.android.remote.dto.TargetContributeRequest
+import com.tasker.android.remote.dto.TargetCreateRequest
+import com.tasker.android.remote.dto.TargetUpdateRequest
 import com.tasker.android.remote.dto.TaskCreateRequest
 import com.tasker.android.remote.dto.TaskUpdateRequest
 import com.tasker.android.remote.dto.TransactionCreateRequest
+
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import okhttp3.MediaType.Companion.toMediaType
@@ -192,7 +196,15 @@ class QueueProcessor @Inject constructor(
                 "DELETE" -> { moneyApi.deleteRecurring(item.entityId); null }
                 else -> null
             }
+            "target" -> when (item.operation) {
+                "CREATE" -> moneyApi.createTarget(json.decodeFromString<TargetCreateRequest>(item.payload)).id
+                "UPDATE" -> moneyApi.updateTarget(item.entityId, json.decodeFromString<TargetUpdateRequest>(item.payload)).id
+                "CONTRIBUTE" -> { moneyApi.contributeTarget(item.entityId, json.decodeFromString<TargetContributeRequest>(item.payload)); null }
+                "DELETE" -> { moneyApi.deleteTarget(item.entityId); null }
+                else -> null
+            }
             else -> null
         }
     }
 }
+

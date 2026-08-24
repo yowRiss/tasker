@@ -11,6 +11,7 @@ import com.tasker.android.data.local.dao.SubtaskDao
 import com.tasker.android.data.local.dao.SyncMetadataDao
 import com.tasker.android.data.local.dao.SyncQueueDao
 import com.tasker.android.data.local.dao.TagDao
+import com.tasker.android.data.local.dao.TargetDao
 import com.tasker.android.data.local.dao.TaskDao
 import com.tasker.android.data.local.dao.TaskTagDao
 import com.tasker.android.data.local.dao.TransactionDao
@@ -24,6 +25,8 @@ import com.tasker.android.data.local.entity.RecurringTransactionEntity
 import com.tasker.android.data.local.entity.SubtaskEntity
 import com.tasker.android.data.local.entity.SyncMetadataEntity
 import com.tasker.android.data.local.entity.TagEntity
+import com.tasker.android.data.local.entity.TargetEntity
+
 import com.tasker.android.data.local.entity.TaskEntity
 import com.tasker.android.data.local.entity.TaskTagEntity
 import com.tasker.android.data.local.entity.TransactionEntity
@@ -51,6 +54,7 @@ class PullSync @Inject constructor(
     private val transactionDao: TransactionDao,
     private val budgetDao: BudgetDao,
     private val recurringDao: RecurringDao,
+    private val targetDao: TargetDao,
     private val syncQueueDao: SyncQueueDao,
     private val syncMetadataDao: SyncMetadataDao,
 ) {
@@ -64,8 +68,10 @@ class PullSync @Inject constructor(
         pullTransactions()
         pullBudgets()
         pullRecurring()
+        pullTargets()
 
         val now = Instant.now().toString()
+
         syncMetadataDao.upsert(
             SyncMetadataEntity(
                 tableName = "all",
@@ -280,4 +286,38 @@ class PullSync @Inject constructor(
             }
         } catch (e: Exception) { }
     }
+
+    suspend fun pullTargets() {
+        try {
+            val response = moneyApi.listTargets()
+            val pendingEntities = syncQueueDao.getPending().map { it.entityId }.toSet()
+
+            for (dto in response.items) {
+                if (pendingEntities.contains(dto.id)) continue
+
+                val existing = targetDao.getById(dto.id)
+                if (existing == null || dto.updatedAt >= existing.updatedAt) {
+                    targetDao.upsert(
+                        TargetEntity(
+                            id = dto.id,
+                            name = dto.name,
+                            targetAmount = dto.targetAmount.toDoubleOrNull() ?: 0.0,
+                            currentAmount = dto.currentAmount.toDoubleOrNull() ?: 0.0,
+                            targetDate = dto.targetDate,
+                            categoryId = dto.categoryId,
+                            accountId = dto.accountId,
+                            color = dto.color,
+                            icon = dto.icon,
+                            status = dto.status,
+                            notes = dto.notes,
+                            createdAt = dto.createdAt,
+                            updatedAt = dto.updatedAt,
+                            isDeleted = 0,
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) { }
+    }
 }
+

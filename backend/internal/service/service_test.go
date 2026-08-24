@@ -54,4 +54,3 @@ func TestAmountAndNonNegativeAmount(t *testing.T) {
 		t.Fatal("negative amount should be rejected by NonNegativeAmount")
 	}
 }
-

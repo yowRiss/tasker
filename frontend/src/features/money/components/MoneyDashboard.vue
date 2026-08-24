@@ -162,7 +162,6 @@
   </div>
 </template>
 
-
 <script setup lang="ts">
 import { onMounted, watch } from 'vue'
 import SpendingByCategory from './SpendingByCategory.vue'
@@ -383,4 +382,3 @@ function formatIDR(valStr: string): string {
   color: #16a34a;
 }
 </style>
-

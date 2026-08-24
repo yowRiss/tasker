@@ -21,7 +21,6 @@ import type {
   TransactionInput,
 } from './money.types'
 
-
 // Accounts API
 export const listAccounts = (params: { include_archived?: boolean } = {}) =>
   api<{ items: Account[] }>(`/v1/accounts${query(params as Record<string, string | boolean>)}`)
@@ -197,4 +196,3 @@ export const contributeTarget = (id: string, input: TargetContributeInput) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   })
-

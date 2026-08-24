@@ -67,7 +67,6 @@ func NonNegativeAmount(value string) (string, error) {
 	return value, nil
 }
 
-
 func Date(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if _, err := time.Parse("2006-01-02", value); err != nil {
@@ -906,4 +905,3 @@ func (s *Service) ContributeTarget(ctx context.Context, p domain.Principal, id s
 	})
 	return out, err
 }
-

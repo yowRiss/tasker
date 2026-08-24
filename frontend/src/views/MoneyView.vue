@@ -35,11 +35,7 @@
           {{ creatingRecurring ? 'Close' : 'New Recurring' }}
         </button>
 
-        <button
-          v-if="activeTab === 'targets'"
-          class="button primary"
-          @click="toggleCreatingTarget"
-        >
+        <button v-if="activeTab === 'targets'" class="button primary" @click="toggleCreatingTarget">
           {{ creatingTarget ? 'Close' : 'New Target' }}
         </button>
       </div>
@@ -105,7 +101,6 @@
         Savings Targets ({{ targets.length }})
       </button>
     </nav>
-
 
     <!-- Global Notice / Error -->
     <p v-if="globalError" class="notice">{{ globalError }}</p>
@@ -303,7 +298,6 @@ const { budgets } = budgetStore
 const { recurring: recurringTemplates, dueRecurring } = recurringStore
 const { targets } = targetStore
 
-
 const globalError = computed(() => {
   return (
     accountStore.error.value ||
@@ -423,7 +417,6 @@ async function reloadTargets() {
   await targetStore.load()
 }
 
-
 function resetFilters() {
   filters.start_date = ''
   filters.end_date = ''
@@ -460,7 +453,6 @@ onMounted(async () => {
   await reloadRecurring()
   await reloadTargets()
 })
-
 
 // Transaction Actions
 async function handleSaveTransaction(input: TransactionInput) {
@@ -660,7 +652,6 @@ async function handleContributeSubmit(amount: string, isWithdraw: boolean) {
   }
 }
 </script>
-
 
 <style scoped>
 .money-tabs {

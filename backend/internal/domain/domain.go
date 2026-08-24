@@ -214,4 +214,3 @@ type TargetSummary struct {
 	TotalCurrentAmount   string `json:"total_current_amount"`
 	OverallProgress      string `json:"overall_progress"`
 }
-

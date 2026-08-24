@@ -234,4 +234,3 @@ export interface TargetSummary {
   total_current_amount: string
   overall_progress: string
 }
-
