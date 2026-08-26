@@ -6,6 +6,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.CloudDone
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Sync
@@ -69,12 +73,28 @@ class SettingsViewModel @Inject constructor(
 @Composable
 fun SettingsScreen(
     onConnectAccount: () -> Unit,
+    onOpenOffline: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val colors = TaskerTheme.colors
     val syncState by viewModel.syncState.collectAsState()
     val updateState by viewModel.updateState.collectAsState()
     val accountConnected by viewModel.accountConnected.collectAsState()
+    val offlineAccessIcon = when {
+        !syncState.isOnline -> Icons.Outlined.CloudOff
+        syncState.failedCount > 0 -> Icons.Outlined.ErrorOutline
+        else -> Icons.Outlined.CloudDone
+    }
+    val offlineAccessTint = when {
+        !syncState.isOnline -> colors.warning
+        syncState.failedCount > 0 -> colors.destructive
+        else -> colors.success
+    }
+    val offlineAccessBackground = when {
+        !syncState.isOnline -> colors.warningSubtle
+        syncState.failedCount > 0 -> colors.destructiveSubtle
+        else -> colors.successSubtle
+    }
 
     Scaffold(
         containerColor = colors.background,
@@ -132,26 +152,38 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text("Sync Engine", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
-                            SyncStatusBadge(syncState = syncState, onSyncClick = viewModel::triggerManualSync)
+                            Text(
+                                text = "Sync Engine",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.textPrimary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            SyncStatusBadge(
+                                syncState = syncState,
+                                onSyncClick = if (syncState.isOnline) viewModel::triggerManualSync else null,
+                            )
                         }
 
                         HorizontalDivider(color = colors.border.copy(alpha = 0.5f))
 
                         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                            Text("Connection Status", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
-                            Text(if (syncState.isOnline) "Connected (Online)" else "Offline Mode", style = MaterialTheme.typography.bodyMedium, color = if (syncState.isOnline) colors.success else colors.warning)
+                            Text("Connection Status", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary, modifier = Modifier.weight(1f))
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (syncState.isOnline) "Connected (Online)" else "Offline Mode", style = MaterialTheme.typography.bodyMedium, color = colors.textPrimary)
                         }
 
                         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                            Text("Pending Mutations", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+                            Text("Pending Mutations", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary, modifier = Modifier.weight(1f))
+                            Spacer(Modifier.width(8.dp))
                             Text("${syncState.pendingCount} queued", style = MaterialTheme.typography.bodyMedium, color = colors.textPrimary)
                         }
 
                         if (syncState.failedCount > 0) {
                             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Text("Failed Sync Items", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
-                                Text("${syncState.failedCount} errors", style = MaterialTheme.typography.bodyMedium, color = colors.destructive)
+                                Text("Failed Sync Items", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary, modifier = Modifier.weight(1f))
+                                Spacer(Modifier.width(8.dp))
+                                Text("${syncState.failedCount} errors", style = MaterialTheme.typography.bodyMedium, color = colors.textPrimary)
                             }
                         }
 
@@ -207,6 +239,54 @@ fun SettingsScreen(
                             Text("Connect account for sync")
                         }
                     }
+                }
+            }
+
+            Card(
+                onClick = onOpenOffline,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        color = offlineAccessBackground,
+                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = offlineAccessIcon,
+                                contentDescription = null,
+                                tint = offlineAccessTint,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Offline access",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.textPrimary,
+                        )
+                        Text(
+                            text = when {
+                                !syncState.isOnline -> "Your content remains available on this device"
+                                syncState.failedCount > 0 -> "Review local content and failed sync items"
+                                else -> "Review device content and sync readiness"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textSecondary,
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Outlined.ChevronRight,
+                        contentDescription = null,
+                        tint = colors.textTertiary,
+                    )
                 }
             }
 

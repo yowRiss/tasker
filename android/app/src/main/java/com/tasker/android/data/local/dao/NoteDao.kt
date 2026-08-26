@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NoteDao {
+    @Query("SELECT COUNT(*) FROM notes WHERE is_deleted = 0")
+    fun observeActiveCount(): Flow<Int>
+
     @Query("""
         SELECT * FROM notes 
         WHERE is_deleted = 0 

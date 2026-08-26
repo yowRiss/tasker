@@ -58,6 +58,9 @@ interface CategoryDao {
 
 @Dao
 interface TransactionDao {
+    @Query("SELECT COUNT(*) FROM transactions WHERE is_deleted = 0")
+    fun observeActiveCount(): Flow<Int>
+
     @Query("""
         SELECT * FROM transactions 
         WHERE is_deleted = 0 
@@ -150,4 +153,3 @@ interface TargetDao {
     @Query("UPDATE targets SET id = :newId WHERE id = :oldId")
     suspend fun remapId(oldId: String, newId: String)
 }
-

@@ -1,22 +1,16 @@
 package com.tasker.android.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CloudDone
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.tasker.android.sync.SyncState
 import com.tasker.android.ui.theme.TaskerTheme
@@ -24,7 +18,7 @@ import com.tasker.android.ui.theme.TaskerTheme
 @Composable
 fun SyncStatusBadge(
     syncState: SyncState,
-    onSyncClick: () -> Unit,
+    onSyncClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = TaskerTheme.colors
@@ -37,12 +31,24 @@ fun SyncStatusBadge(
         else -> Triple(colors.accentSubtle, colors.accent, "Synced")
     }
 
+    val interactionModifier = if (onSyncClick != null) {
+        Modifier
+            .defaultMinSize(minHeight = 48.dp)
+            .clickable(
+                onClickLabel = "Sync now",
+                role = Role.Button,
+                onClick = onSyncClick,
+            )
+    } else {
+        Modifier
+    }
+
     Surface(
         color = badgeBg,
         shape = RoundedCornerShape(12.dp),
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onSyncClick)
+            .then(interactionModifier)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -58,7 +64,7 @@ fun SyncStatusBadge(
             Text(
                 text = statusText,
                 style = MaterialTheme.typography.labelSmall,
-                color = badgeFg
+                color = colors.textPrimary
             )
 
             if (syncState.isSyncing) {

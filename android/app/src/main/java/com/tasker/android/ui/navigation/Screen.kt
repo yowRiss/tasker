@@ -53,6 +53,8 @@ sealed class Screen(val route: String) {
     data object Budgets : Screen("money/budgets")
     data object Recurring : Screen("money/recurring")
     data object Targets : Screen("money/targets")
+
+    data object Offline : Screen("settings/offline")
 }
 
 

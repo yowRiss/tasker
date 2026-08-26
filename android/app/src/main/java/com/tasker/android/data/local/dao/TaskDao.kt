@@ -50,6 +50,9 @@ interface TagDao {
 
 @Dao
 interface TaskDao {
+    @Query("SELECT COUNT(*) FROM tasks WHERE is_deleted = 0")
+    fun observeActiveCount(): Flow<Int>
+
     @Query("""
         SELECT * FROM tasks 
         WHERE is_deleted = 0 

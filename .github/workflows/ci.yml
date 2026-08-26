@@ -94,4 +94,4 @@ jobs:
             gradle wrapper --gradle-version 8.9
           fi
           chmod +x gradlew
-          ./gradlew :app:lintDebug --no-daemon
+          ./gradlew :app:lintDebug :app:testDebugUnitTest --no-daemon

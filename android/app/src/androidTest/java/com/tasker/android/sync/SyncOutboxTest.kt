@@ -66,6 +66,7 @@ class SyncOutboxTest {
 
         override suspend fun delete(id: Long) = Unit
         override suspend fun updateStatus(id: Long, status: String, error: String?) = Unit
+        override suspend fun retryAllFailed() = Unit
         override suspend fun remapEntityId(oldId: String, newId: String) = Unit
     }
 }

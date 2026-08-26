@@ -8,4 +8,9 @@ class SessionDestinationTest {
     fun mobileStartsOnTasksWithoutAnAccount() {
         assertEquals(Screen.Tasks.route, mobileStartDestination())
     }
+
+    @Test
+    fun offlineAccessIsNestedUnderSettings() {
+        assertEquals("settings/offline", Screen.Offline.route)
+    }
 }

@@ -9,6 +9,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -19,6 +21,8 @@ import com.tasker.android.ui.auth.LoginScreen
 import com.tasker.android.ui.money.MoneyScreen
 import com.tasker.android.ui.notes.NoteDetailScreen
 import com.tasker.android.ui.notes.NotesScreen
+import com.tasker.android.ui.offline.OfflineScreen
+import com.tasker.android.ui.offline.OfflineStatusBanner
 import com.tasker.android.ui.settings.SettingsScreen
 import com.tasker.android.ui.tasks.TaskDetailScreen
 import com.tasker.android.ui.tasks.TasksScreen
@@ -29,15 +33,29 @@ private const val NAV_ANIM_DURATION = 220
 fun AppNavGraph(
     navController: NavHostController = rememberNavController(),
     startDestination: String = mobileStartDestination(),
+    syncViewModel: AppSyncViewModel = hiltViewModel(),
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val syncState by syncViewModel.syncState.collectAsStateWithLifecycle()
 
     // Show bottom bar only on tab roots
     val tabRoutes = bottomTabs.map { it.screen.route }
     val showBottomBar = currentRoute in tabRoutes
 
     Scaffold(
+        topBar = {
+            if (currentRoute != Screen.Login.route && currentRoute != Screen.Offline.route) {
+                OfflineStatusBanner(
+                    syncState = syncState,
+                    onClick = {
+                        navController.navigate(Screen.Offline.route) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
+        },
         bottomBar = {
             if (showBottomBar) {
                 TaskerBottomBar(
@@ -178,6 +196,13 @@ fun AppNavGraph(
             // ── Settings ──────────────────────────────────────────
             composable(Screen.Settings.route) {
                 SettingsScreen(
+                    onConnectAccount = { navController.navigate(Screen.Login.route) },
+                    onOpenOffline = { navController.navigate(Screen.Offline.route) },
+                )
+            }
+            composable(Screen.Offline.route) {
+                OfflineScreen(
+                    onBack = { navController.popBackStack() },
                     onConnectAccount = { navController.navigate(Screen.Login.route) },
                 )
             }

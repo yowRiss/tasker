@@ -28,6 +28,9 @@ interface SyncQueueDao {
     @Query("UPDATE sync_queue SET status = :status, last_error = :error, retry_count = retry_count + 1 WHERE id = :id")
     suspend fun updateStatus(id: Long, status: String, error: String?)
 
+    @Query("UPDATE sync_queue SET status = 'pending', last_error = NULL, retry_count = 0 WHERE status = 'failed'")
+    suspend fun retryAllFailed()
+
     @Query("UPDATE sync_queue SET entity_id = :newId WHERE entity_id = :oldId")
     suspend fun remapEntityId(oldId: String, newId: String)
 }
