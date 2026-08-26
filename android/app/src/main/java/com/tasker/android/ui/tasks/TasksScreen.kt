@@ -1,6 +1,5 @@
 package com.tasker.android.ui.tasks
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -28,9 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.tasker.android.data.model.Project
 import com.tasker.android.data.model.Task
 import com.tasker.android.ui.theme.TaskerTheme
 
@@ -45,6 +42,8 @@ fun TasksScreen(
     val tasks by viewModel.tasks.collectAsState()
     val projects by viewModel.projects.collectAsState()
     val filters by viewModel.filters.collectAsState()
+    val viewMode by viewModel.viewMode.collectAsState()
+    var taskPendingDelete by remember { mutableStateOf<Task?>(null) }
 
     Scaffold(
         containerColor = colors.background,
@@ -84,40 +83,51 @@ fun TasksScreen(
                         focusedContainerColor = colors.surfaceAlt,
                         unfocusedContainerColor = colors.surfaceAlt,
                     ),
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                    modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp)
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                TaskViewSelector(
+                    selected = viewMode,
+                    onSelect = viewModel::setViewMode,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Filter Chips Row
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Status filters
-                    item {
-                        FilterChip(
-                            selected = filters.status == "open",
-                            onClick = { viewModel.setStatusFilter("open") },
-                            label = { Text("Open") },
-                            colors = filterChipColors()
-                        )
-                    }
-                    item {
-                        FilterChip(
-                            selected = filters.status == "completed",
-                            onClick = { viewModel.setStatusFilter("completed") },
-                            label = { Text("Completed") },
-                            colors = filterChipColors()
-                        )
-                    }
-                    item {
-                        FilterChip(
-                            selected = filters.status == "all",
-                            onClick = { viewModel.setStatusFilter("all") },
-                            label = { Text("All") },
-                            colors = filterChipColors()
-                        )
+                    if (viewMode != TaskViewMode.BOARD) {
+                        item {
+                            FilterChip(
+                                selected = filters.status == "open",
+                                onClick = { viewModel.setStatusFilter("open") },
+                                modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                                label = { Text("Open") },
+                                colors = filterChipColors()
+                            )
+                        }
+                        item {
+                            FilterChip(
+                                selected = filters.status == "completed",
+                                onClick = { viewModel.setStatusFilter("completed") },
+                                modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                                label = { Text("Completed") },
+                                colors = filterChipColors()
+                            )
+                        }
+                        item {
+                            FilterChip(
+                                selected = filters.status == "all",
+                                onClick = { viewModel.setStatusFilter("all") },
+                                modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                                label = { Text("All") },
+                                colors = filterChipColors()
+                            )
+                        }
                     }
 
                     // Project filter chips
@@ -129,6 +139,7 @@ fun TasksScreen(
                                     if (filters.projectId == proj.id) null else proj.id
                                 )
                             },
+                            modifier = Modifier.defaultMinSize(minHeight = 48.dp),
                             label = { Text(proj.name) },
                             colors = filterChipColors()
                         )
@@ -153,24 +164,58 @@ fun TasksScreen(
                 .padding(innerPadding)
                 .background(colors.background)
         ) {
-            if (tasks.isEmpty()) {
+            if (tasks.isEmpty() && viewMode != TaskViewMode.BOARD) {
                 EmptyTasksView()
             } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(tasks, key = { it.id }) { task ->
-                        TaskCard(
-                            task = task,
-                            onClick = { onTaskClick(task.id) },
-                            onToggleComplete = { viewModel.toggleTaskCompletion(task) },
-                            onDelete = { viewModel.deleteTask(task.id) }
-                        )
+                when (viewMode) {
+                    TaskViewMode.LIST -> LazyColumn(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(tasks, key = { it.id }) { task ->
+                            TaskCard(
+                                task = task,
+                                onClick = { onTaskClick(task.id) },
+                                onToggleComplete = { viewModel.toggleTaskCompletion(task) },
+                                onDelete = { taskPendingDelete = task }
+                            )
+                        }
                     }
+                    TaskViewMode.BOARD -> TaskBoardView(
+                        tasks = tasks,
+                        onTaskClick = onTaskClick,
+                        onMoveTask = viewModel::toggleTaskCompletion,
+                    )
+                    TaskViewMode.TABLE -> TaskTableView(
+                        tasks = tasks,
+                        onTaskClick = onTaskClick,
+                    )
                 }
             }
         }
+    }
+
+    taskPendingDelete?.let { task ->
+        AlertDialog(
+            onDismissRequest = { taskPendingDelete = null },
+            title = { Text("Delete task?") },
+            text = { Text("${task.title} will be removed from every task view.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteTask(task.id)
+                        taskPendingDelete = null
+                    },
+                ) {
+                    Text("Delete", color = colors.destructive)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { taskPendingDelete = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 
@@ -203,7 +248,7 @@ private fun TaskCard(
             // Checkbox
             IconButton(
                 onClick = onToggleComplete,
-                modifier = Modifier.size(28.dp).offset(y = (-2).dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = if (isCompleted) Icons.Rounded.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
@@ -241,9 +286,8 @@ private fun TaskCard(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Metadata row (Project, Priority, Due Date, Subtasks)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     // Priority Badge
                     if (task.priority > 0) {
@@ -259,7 +303,7 @@ private fun TaskCard(
                         ) {
                             Text(
                                 text = pText,
-                                color = pColor,
+                                color = colors.textPrimary,
                                 style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
@@ -317,7 +361,7 @@ private fun TaskCard(
             // Delete action
             IconButton(
                 onClick = onDelete,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     Icons.Outlined.Delete,
