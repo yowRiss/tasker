@@ -56,6 +56,25 @@ The React Native/Expo mobile app has been completely rewritten natively in **Kot
 3. Re-launch the app.
 4. Verify `AppDatabase` integrity via SQLite WAL recovery, pending items in `sync_queue` remain intact, and `SyncWorker` / `SyncManager` re-runs sync cleanly without data loss.
 
+### Test 4: Offline Access Surface Pass
+
+1. Open Settings and select **Offline access**.
+2. Verify the Tasks, Notes, and Transactions counts match the active local lists.
+3. Enable Airplane Mode and confirm the exception banner opens Offline Access and states that changes are saved locally.
+4. Create or edit one task, note, and transaction; confirm each remains visible after force-closing and reopening the app.
+5. Reconnect, select **Sync now**, and confirm the pending count clears after the server accepts the changes.
+6. For a failed queue item, select **Retry failed sync** and confirm its retry state is reset before the next sync attempt.
+
+### Test 5: Offline Task Database Views
+
+1. Open Tasks and switch among **List**, **Board**, and **Table**; verify every view shows the same filtered task records.
+2. Relaunch the app and verify the most recently selected task view is restored.
+3. In Board, move a task from **To do** to **Done** and verify it moves columns immediately.
+4. Switch to List and Table and verify the same task is completed without a duplicate record.
+5. Enable airplane mode, repeat the board move, and verify Offline Access reports a locally saved pending change.
+6. Reconnect, sync, and verify the board state remains consistent after the server pull.
+7. At large font scale, verify view chips remain horizontally scrollable, board actions stay at least 48dp, and table content scrolls horizontally without clipping the screen.
+
 ---
 
 ## 4. How to Build & Package in Android Studio

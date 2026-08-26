@@ -52,6 +52,12 @@ The implementation source of truth is `android/app/src/main/java/com/tasker/andr
 - `MoneyEmptyState`: short reason plus optional clear-filters action.
 - `RecurringTransactionCard`: description/category, signed amount, cadence, due date, and delete action. States: income, expense, and pending-delete confirmation.
 - `EntityDialog`: labeled fields, inline validation, cancel, and a disabled confirm action until required values are valid.
+- `OfflineStatusBanner`: full-width exception strip above app content. States: offline with locally queued-change count, and sync-error with a direct path to Offline Access. It is hidden when the app is online and healthy so normal screens keep their low-chrome hierarchy.
+- `OfflineSummaryCard`: connectivity icon, offline-readiness statement, and short explanation that Room-backed content remains editable. States: offline, online and synced, syncing, pending changes, and failed changes.
+- `OfflineContentRow`: icon, locally available content label, safe aggregate count, and supporting description. Used for tasks, notes, and transactions; rows do not expose record titles or queued payload details.
+- `TaskViewSelector`: horizontally scrollable List, Board, and Table choices above the task collection. The selected view uses accent-subtle treatment and persists locally across app sessions.
+- `TaskKanbanColumn`: fixed-width horizontal board group with title, aggregate count, empty state, and vertically scrolling cards. Mobile moves use a labeled 48dp action instead of requiring precision drag gestures; moving a card updates the same Room-backed task record shown in every view.
+- `TaskTableRow`: horizontally scrollable database row with stable Name, Status, Project, Due, and Priority columns. Header and rows share horizontal position; row taps open the same task detail used by List and Board.
 
 All controls retain Material focus, pressed, disabled, and accessibility semantics. Touch targets should be at least 48dp unless a compact icon is nested inside a larger clickable row.
 
@@ -63,6 +69,8 @@ All controls retain Material focus, pressed, disabled, and accessibility semanti
 - Numeric and date validation is inline and does not discard entered values.
 - Text remains usable at Android font scaling; flexible columns take remaining width and amounts remain visible.
 - Screen behavior must be checked on a phone-size Android surface in light and dark mode before release.
+- Offline and sync states use text plus icons and counts rather than color alone. Offline messaging must distinguish “saved on this device” from “synced to the server.”
+- Task database views must never duplicate records. A status change made from Board must appear immediately in List, Table, and Calendar through the shared local source of truth.
 
 ## 7. Current accepted debt
 
