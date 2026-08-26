@@ -390,7 +390,7 @@ private fun SyncQueueCard(
                     !syncState.isOnline -> "${syncState.pendingCount} change${if (syncState.pendingCount == 1) " is" else "s are"} waiting for a connection."
                     syncState.failedCount > 0 -> "${syncState.failedCount} item${if (syncState.failedCount == 1) " needs" else "s need"} another sync attempt."
                     syncState.pendingCount > 0 -> "${syncState.pendingCount} local change${if (syncState.pendingCount == 1) " is" else "s are"} ready to sync."
-                    else -> "No local changes are waiting to sync.",
+                    else -> "No local changes are waiting to sync."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textSecondary,
